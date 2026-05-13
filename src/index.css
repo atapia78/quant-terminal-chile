@@ -1,0 +1,31 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  background: #0d0c0a;
+  color: #e8e3d8;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.005em;
+  min-height: 100%;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0d0c0a; }
+::-webkit-scrollbar-thumb { background: #2a2620; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: #4a4338; }
+
+/* Selection */
+::selection { background: #e8b86a; color: #0d0c0a; }
+
+button { font-family: inherit; }
+input { font-family: inherit; }

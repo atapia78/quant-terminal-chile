@@ -1,0 +1,24 @@
+{
+  "name": "quant-terminal-chile",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Análisis cuantitativo de acciones del IPSA con proyecciones probabilísticas y datos live de Yahoo Finance",
+  "scripts": {
+    "dev": "vite",
+    "dev:full": "vercel dev",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7",
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.3.4"
+  }
+}
