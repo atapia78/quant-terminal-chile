@@ -53,7 +53,7 @@ Acá no.
 ## Instalación y desarrollo
 
 ```bash
-git clone https://github.com/TU_USUARIO/quant-terminal-chile.git
+git clone https://github.com/atapia78/quant-terminal-chile.git
 cd quant-terminal-chile
 npm install
 ```
