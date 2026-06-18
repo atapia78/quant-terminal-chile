@@ -109,7 +109,7 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   // ---------- Comparador de rotación (ranking proyectado) ----------
   // Calcula sobre la data DISPONIBLE (bundle + lo ya cargado con LIVE).
   // No dispara fetches masivos: recompute manual con "Recalcular" o al cambiar horizonte.
-  const ranking = useMemo(() => {
+  const { ranking, excluded, basis } = useMemo(() => {
     const rows = universe.map(u => {
       const proj = projectTicker(getBars(u.symbol), horizonDays);
       return proj ? {
@@ -117,9 +117,17 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
         live: isLive(u.symbol), verdict: rotationVerdict(proj), ...proj,
       } : null;
     }).filter(Boolean);
-    rows.sort((a, b) => b.riskAdj - a.riskAdj);
-    rows.forEach((r, i) => { r.rank = i + 1; });
-    return rows;
+
+    // HONESTIDAD: no mezclar bases de datos. Si hay AL MENOS un papel con data
+    // viva, el ranking comparable se arma SOLO con los que tienen live (misma
+    // base real); el resto queda excluido (no comparable) hasta refrescarlo.
+    // Si nadie tiene live, se rankea todo el bundle pero marcado como ilustrativo.
+    const anyLive = rows.some(r => r.live);
+    const comparable = anyLive ? rows.filter(r => r.live) : rows;
+    const rest = anyLive ? rows.filter(r => !r.live) : [];
+    comparable.sort((a, b) => b.riskAdj - a.riskAdj);
+    comparable.forEach((r, i) => { r.rank = i + 1; });
+    return { ranking: comparable, excluded: rest, basis: anyLive ? 'live' : 'synthetic' };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [universe, horizonDays, liveData, recalcNonce]);
 
@@ -128,8 +136,7 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   const heldRanked = ranking.filter(r => heldSymbols.has(r.symbol));
   const topN = ranking.slice(0, 3);
   // ¿El ranking corre con data viva o solo con bundle sintético?
-  const liveCount = ranking.filter(r => r.live).length;
-  const synthetic = liveCount === 0;
+  const synthetic = basis === 'synthetic';
 
   // ---------- Recomendación de rotación (model-based, orientadora) ----------
   // Postura explícita por posición: MANTENER si nada le gana de forma material;
@@ -137,16 +144,18 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   // por riesgo Y le ganan al benchmark naive. Sigue siendo lectura del modelo:
   // probabilística, con supuestos, no una orden. La decisión es de Alex.
   const recos = useMemo(() => {
-    return positions
-      .map(p => ranking.find(r => r.symbol === p.ticker))
-      .filter(Boolean)
-      .map(held => {
-        const better = ranking
-          .filter(r => !heldSymbols.has(r.symbol) && r.beatsNaive
-            && r.riskAdj > held.riskAdj && r.medianReturn > held.medianReturn + 0.01)
-          .slice(0, 3);
-        return { held, better, action: better.length === 0 ? 'MANTENER' : 'EVALUAR ROTACIÓN' };
-      });
+    const seen = new Set();
+    return positions.filter(p => (seen.has(p.ticker) ? false : seen.add(p.ticker))).map(p => {
+      const held = ranking.find(r => r.symbol === p.ticker);
+      // Posición sin data viva cuando el ranking ya corre sobre base real:
+      // no es comparable, hay que refrescarla primero (no la mezclamos).
+      if (!held) return { symbol: p.ticker, missing: true };
+      const better = ranking
+        .filter(r => !heldSymbols.has(r.symbol) && r.beatsNaive
+          && r.riskAdj > held.riskAdj && r.medianReturn > held.medianReturn + 0.01)
+        .slice(0, 3);
+      return { held, better, missing: false, action: better.length === 0 ? 'MANTENER' : 'EVALUAR ROTACIÓN' };
+    });
   }, [positions, ranking, heldSymbols]);
 
   return (
@@ -285,8 +294,13 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
 
           {synthetic && (
             <div className="pf-reco-illustrative">
-              ⚠ Orden ilustrativo — corre sobre bundle sintético. Dale <strong>↻ Precios vivos</strong> / <strong>↻ del mercado</strong> y
-              <strong> Recalcular</strong> para una recomendación con data viva.
+              ⚠ Orden ilustrativo — corre sobre bundle sintético. Dale <strong>↻ Todo en vivo</strong> para una recomendación con data real.
+            </div>
+          )}
+          {!synthetic && excluded.length > 0 && (
+            <div className="pf-reco-illustrative">
+              ⚠ Comparando solo los <strong>{ranking.length}</strong> papeles con data viva (misma base real). Quedan <strong>{excluded.length}</strong> en
+              bundle, <strong>excluidos</strong> del ranking para no mezclar real con sintético. Dale <strong>↻ Todo en vivo</strong> para incluirlos.
             </div>
           )}
 
@@ -296,7 +310,19 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
             </div>
           )}
 
-          {recos.map(({ held, better, action }) => {
+          {recos.map((rec) => {
+            if (rec.missing) {
+              return (
+                <div key={rec.symbol} className="pf-reco-row">
+                  <span className="pf-reco-tag rotate">SIN DATA</span>
+                  <span className="pf-reco-text">
+                    Tu <strong>{rec.symbol}</strong> no tiene precio vivo: no es comparable contra los demás todavía.
+                    Dale <strong>↻ Precios vivos</strong> (o ↻ Todo en vivo) para incluirla.
+                  </span>
+                </div>
+              );
+            }
+            const { held, better, action } = rec;
             const top = better[0];
             return (
               <div key={held.symbol} className="pf-reco-row">
@@ -353,6 +379,12 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
             </tbody>
           </table>
         </div>
+
+        {!synthetic && excluded.length > 0 && (
+          <p style={{ marginTop: 10, fontSize: 11, color: '#6b6558', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1.6 }}>
+            Excluidos por no tener data viva ({excluded.length}): {excluded.map(r => r.symbol).join(', ')}.
+          </p>
+        )}
 
         <p className="pf-disclaimer">
           ⓘ Ranking <strong>model-based</strong> (GBM con μ/σ históricos, reusa el motor de proyecciones). Depende del horizonte
