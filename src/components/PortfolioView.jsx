@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { loadPortfolio, savePortfolio, projectTicker, HORIZONS } from '../lib/portfolio.js';
+import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, HORIZONS } from '../lib/portfolio.js';
 
 // Formato de moneda: CLP chileno 2 decimales ($6.713,00) · USD 2 decimales ($185.42)
 function fmtMoney(v, moneda) {
@@ -20,6 +20,7 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   const [recalcNonce, setRecalcNonce] = useState(0);
   const [newTicker, setNewTicker] = useState(universe[0]?.symbol || '');
   const [newQty, setNewQty] = useState(100);
+  const [liveMsg, setLiveMsg] = useState(null);
 
   const persist = useCallback((next) => {
     setPositions(next);
@@ -56,14 +57,20 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     persist(next);
   }
 
-  // Actualiza precio vivo SOLO de las posiciones (son pocas).
+  // Actualiza precio vivo SOLO de las posiciones (son pocas). Secuencial con un
+  // pequeño respiro entre llamadas para no gatillar rate-limits (429) de Yahoo,
+  // y reporta cuántas quedaron en vivo y cuáles no.
   async function refreshPositionsLive() {
     const seen = new Set();
-    for (const p of positions) {
-      if (seen.has(p.ticker)) continue;
-      seen.add(p.ticker);
-      await onRefreshTicker(p.ticker);
+    const list = positions.filter(p => (seen.has(p.ticker) ? false : seen.add(p.ticker)));
+    let ok = 0; const fail = [];
+    setLiveMsg(`Cargando ${list.length}…`);
+    for (const p of list) {
+      const success = await onRefreshTicker(p.ticker);
+      if (success) ok++; else fail.push(p.ticker);
+      await new Promise(res => setTimeout(res, 350));
     }
+    setLiveMsg(`${ok}/${list.length} en vivo${fail.length ? ` · sin data: ${fail.join(', ')}` : ''}`);
   }
 
   // ---------- Totales por moneda ----------
@@ -88,7 +95,7 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
       const proj = projectTicker(getBars(u.symbol), horizonDays);
       return proj ? {
         symbol: u.symbol, name: u.name, moneda: u.currency || 'CLP',
-        live: isLive(u.symbol), ...proj,
+        live: isLive(u.symbol), verdict: rotationVerdict(proj), ...proj,
       } : null;
     }).filter(Boolean);
     rows.sort((a, b) => b.riskAdj - a.riskAdj);
@@ -101,6 +108,9 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   const horizonLabel = HORIZONS.find(h => h.days === horizonDays)?.label || `${horizonDays}d`;
   const heldRanked = ranking.filter(r => heldSymbols.has(r.symbol));
   const topN = ranking.slice(0, 3);
+  // ¿El ranking corre con data viva o solo con bundle sintético?
+  const liveCount = ranking.filter(r => r.live).length;
+  const synthetic = liveCount === 0;
 
   // ---------- Recomendación de rotación (model-based, orientadora) ----------
   // Postura explícita por posición: MANTENER si nada le gana de forma material;
@@ -126,10 +136,13 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
       <div className="panel" style={{ marginBottom: 18 }}>
         <div className="panel-title">
           <span>Mis posiciones</span>
-          <button className="import-btn" onClick={refreshPositionsLive} disabled={loading}
-            title="Baja precio vivo de Yahoo solo para tus posiciones (son pocas)">
-            {loading ? '...' : '↻ Precios vivos'}
-          </button>
+          <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {liveMsg && <span style={{ fontSize: 11, color: '#a89f8e', fontFamily: 'JetBrains Mono, monospace' }}>{liveMsg}</span>}
+            <button className="import-btn" onClick={refreshPositionsLive} disabled={loading}
+              title="Baja precio vivo de Yahoo solo para tus posiciones (son pocas)">
+              {loading ? '...' : '↻ Precios vivos'}
+            </button>
+          </span>
         </div>
 
         <div style={{ overflowX: 'auto' }}>
@@ -236,7 +249,7 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
           </span>
         </div>
 
-        {/* Recomendación de rotación — postura explícita, model-based */}
+        {/* Recomendación de rotación — accionable, model-based */}
         <div className="pf-reco">
           <div className="pf-reco-head">
             <span className="lbl">Recomendación de rotación · {horizonLabel}</span>
@@ -244,35 +257,45 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
               Mejor del universo: {topN.map(r => `${r.symbol} (${fmtPct(r.medianReturn)})`).join(' · ') || '—'}
             </span>
           </div>
+
+          {synthetic && (
+            <div className="pf-reco-illustrative">
+              ⚠ Orden ilustrativo — corre sobre bundle sintético. Dale <strong>↻ Precios vivos</strong> / <strong>↻ del mercado</strong> y
+              <strong> Recalcular</strong> para una recomendación con data viva.
+            </div>
+          )}
+
           {recos.length === 0 && (
             <div className="pf-reco-row" style={{ color: '#6b6558' }}>
               Agregá una posición arriba para ver una lectura de rotación sobre tu cartera.
             </div>
           )}
-          {recos.map(({ held, better, action }) => (
-            <div key={held.symbol} className="pf-reco-row">
-              <span className={`pf-reco-tag ${action === 'MANTENER' ? 'hold' : 'rotate'}`}>{action}</span>
-              <span className="pf-reco-text">
-                <strong>{held.symbol}</strong> (puesto {held.rank}/{ranking.length} · retorno med. {fmtPct(held.medianReturn)},
-                P(&gt;0) {(held.probPositive * 100).toFixed(0)}%)
-                {action === 'MANTENER'
-                  ? ' — ningún candidato le gana en retorno ajustado por riesgo y al naive. El modelo sugiere mantener.'
-                  : <> — el modelo sugiere evaluar rotar hacia: {better.map(b =>
-                      `${b.symbol} (${fmtPct(b.medianReturn)}, P(>0) ${(b.probPositive * 100).toFixed(0)}%)`).join(' · ')}.</>}
-              </span>
-            </div>
-          ))}
-          <div className="pf-reco-foot">
-            Lectura <strong>model-based</strong> (proyección GBM, reusa el motor). Es orientación probabilística con supuestos
-            explícitos, <strong>no una orden ni garantía</strong>. La decisión final es tuya · uso educacional.
-          </div>
+
+          {recos.map(({ held, better, action }) => {
+            const top = better[0];
+            return (
+              <div key={held.symbol} className="pf-reco-row">
+                <span className={`pf-reco-tag ${action === 'MANTENER' ? 'hold' : 'rotate'}`}>{action}</span>
+                <span className="pf-reco-text">
+                  Tu <strong>{held.symbol}</strong>: <span className={`pf-verdict ${held.verdict.tone}`}>{held.verdict.label}</span>,
+                  puesto {held.rank} de {ranking.length} a {horizonLabel}.
+                  {action === 'MANTENER'
+                    ? <> El modelo sugiere <strong>MANTENER</strong>: ningún candidato lo supera con margen en retorno ajustado por riesgo y ganándole al naive.</>
+                    : <> El modelo sugiere <strong>EVALUAR ROTACIÓN</strong> hacia {better.map(b => b.symbol).join(', ')} — proyectan mejor retorno ajustado por riesgo
+                        (p. ej. {top.symbol} mediano {fmtPct(top.medianReturn)} vs tu {fmtPct(held.medianReturn)}; P(&gt;0) {(top.probPositive*100).toFixed(0)}% vs {(held.probPositive*100).toFixed(0)}%; le ganan al naive).</>}
+                </span>
+              </div>
+            );
+          })}
+
+          <div className="pf-reco-foot">Lectura del modelo · educacional, no asesoría.</div>
         </div>
 
         <div style={{ overflowX: 'auto' }}>
           <table className="pf-table">
             <thead>
               <tr>
-                <th>#</th><th>Ticker</th>
+                <th>#</th><th>Ticker</th><th>Veredicto</th>
                 <th>Retorno med. ({horizonLabel})</th>
                 <th>Banda P10–P90</th>
                 <th>P(ret &gt; 0)</th>
@@ -291,6 +314,7 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
                       {held && <span className="pf-badge" style={{ background: '#e8b86a', color: '#0d0c0a' }}>MÍA</span>}
                       <span className="pf-src" style={{ color: r.live ? '#82c5a4' : '#6b6558' }}>{r.live ? 'LIVE' : 'bundle'}</span>
                     </td>
+                    <td><span className={`pf-verdict ${r.verdict.tone}`}>{r.verdict.label}</span></td>
                     <td className={r.medianReturn >= 0 ? 'up' : 'down'}>{fmtPct(r.medianReturn)}</td>
                     <td style={{ fontSize: 11, color: '#a89f8e' }}>{fmtPct(r.p10Return)} … {fmtPct(r.p90Return)}</td>
                     <td>{(r.probPositive * 100).toFixed(0)}%</td>

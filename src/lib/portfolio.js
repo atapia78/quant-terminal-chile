@@ -101,3 +101,28 @@ export function projectTicker(bars, horizonDays) {
     riskAdj, beatsNaive,
   };
 }
+
+// ---------- Veredicto por acción ----------
+// Umbrales documentados y ajustables. Combinan tres señales del cono GBM:
+//   · retorno mediano proyectado > 0
+//   · que el modelo le gane al benchmark naive (μ=0) → la "señal" no es ruido
+//   · P(retorno > 0) al horizonte
+//   · métrica ajustada por riesgo (retorno mediano ÷ amplitud banda P10–P90)
+export const VERDICT_THRESHOLDS = {
+  atractivo: { prob: 0.55, riskAdj: 0.40 }, // Atractivo: supera estos + gana al naive + retorno>0
+  debil:     { prob: 0.45 },                // Débil: bajo este P(>0), o pierde con naive, o retorno<=0
+};
+
+export function rotationVerdict(p) {
+  if (!p) return { label: '—', tone: 'neutral' };
+  const { medianReturn, beatsNaive, probPositive, riskAdj } = p;
+  if (medianReturn > 0 && beatsNaive
+    && probPositive >= VERDICT_THRESHOLDS.atractivo.prob
+    && riskAdj >= VERDICT_THRESHOLDS.atractivo.riskAdj) {
+    return { label: 'Atractivo', tone: 'good' };
+  }
+  if (!beatsNaive || medianReturn <= 0 || probPositive < VERDICT_THRESHOLDS.debil.prob) {
+    return { label: 'Débil', tone: 'weak' };
+  }
+  return { label: 'Neutral', tone: 'neutral' };
+}

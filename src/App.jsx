@@ -56,9 +56,14 @@ export default function App() {
     try {
       const symbol = yahooSymbolFor(nemo);
       const data = await fetchSymbol(symbol, range);
-      if (data) setLiveData(prev => ({ ...prev, [nemo]: data }));
+      if (data) {
+        setLiveData(prev => ({ ...prev, [nemo]: data }));
+        return true;
+      }
+      return false;
     } catch (e) {
       setFetchError(`${nemo}: ${e.message}`);
+      return false;
     }
   }, [fetchSymbol, range]);
 

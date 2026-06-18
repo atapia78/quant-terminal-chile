@@ -636,3 +636,17 @@
 .pf-reco-tag.rotate { background: #2e2620; color: #e8b86a; border: 1px solid #4a3d2c; }
 .pf-reco-text { color: #d8d2c6; line-height: 1.5; }
 .pf-reco-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid #2a2520; font-size: 10px; color: #6b6558; line-height: 1.5; }
+
+/* ============ Veredicto por acción (badge) ============ */
+.pf-verdict {
+  display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px;
+  font-weight: 600; letter-spacing: 0.04em; font-family: 'JetBrains Mono', monospace; white-space: nowrap;
+}
+.pf-verdict.good { background: #1e2a22; color: #82c5a4; border: 1px solid #2e4636; }
+.pf-verdict.neutral { background: #2a2520; color: #c9bfa8; border: 1px solid #3d342a; }
+.pf-verdict.weak { background: #2e211d; color: #d97757; border: 1px solid #4a2f28; }
+.pf-reco-illustrative {
+  margin-bottom: 10px; padding: 8px 10px; border-radius: 3px; font-size: 11px; line-height: 1.5;
+  background: rgba(217,119,87,0.08); border: 1px solid #3d2a26; color: #d97757;
+  font-family: 'JetBrains Mono', monospace;
+}
