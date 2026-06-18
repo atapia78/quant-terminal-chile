@@ -227,19 +227,12 @@ position_size = (account × risk_pct) / (ATR × atr_multiplier)
 - [x] Import CSV (fallback / data custom)
 - [x] Position sizing
 - [x] Rule-based quant summary
-- [x] **Mi Portafolio + comparador de rotación** (posiciones reales con precio vivo, totales por moneda, ranking por retorno proyectado con cono + benchmark naive)
 - [ ] Comparación entre tickers (correlación, beta)
 - [ ] Análisis de portafolio (Markowitz, risk parity)
 - [ ] Conversión CLP/USD automática (fetch del dólar observado)
 - [ ] Backtest de estrategias técnicas
 - [ ] Black-Scholes para opciones (cuando aplique al mercado CL)
 - [ ] AI deep-dive opcional vía función serverless adicional
-
-### Mi Portafolio — pendientes (siguiente iteración)
-
-- [ ] Libro de transacciones con histórico (fecha / tipo compra-venta / precio) y **costo promedio derivado** automáticamente (hoy el costo promedio se ingresa a mano).
-- [ ] Conversión **CLP/USD con FX** (dólar observado) para un total consolidado opcional — hoy los totales se muestran **separados por moneda** a propósito.
-- [ ] **Ranking en vivo de todo el universo** con caché persistente — hoy el ranking se calcula con la data disponible (bundle + lo cargado con LIVE) y se refresca con el botón "Recalcular", para no gatillar los rate limits (429) de Yahoo.
 
 ## Limitaciones honestas
 
