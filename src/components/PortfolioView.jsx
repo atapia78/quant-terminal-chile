@@ -102,6 +102,24 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   const heldRanked = ranking.filter(r => heldSymbols.has(r.symbol));
   const topN = ranking.slice(0, 3);
 
+  // ---------- Recomendación de rotación (model-based, orientadora) ----------
+  // Postura explícita por posición: MANTENER si nada le gana de forma material;
+  // EVALUAR ROTACIÓN hacia los candidatos que proyectan mejor retorno ajustado
+  // por riesgo Y le ganan al benchmark naive. Sigue siendo lectura del modelo:
+  // probabilística, con supuestos, no una orden. La decisión es de Alex.
+  const recos = useMemo(() => {
+    return positions
+      .map(p => ranking.find(r => r.symbol === p.ticker))
+      .filter(Boolean)
+      .map(held => {
+        const better = ranking
+          .filter(r => !heldSymbols.has(r.symbol) && r.beatsNaive
+            && r.riskAdj > held.riskAdj && r.medianReturn > held.medianReturn + 0.01)
+          .slice(0, 3);
+        return { held, better, action: better.length === 0 ? 'MANTENER' : 'EVALUAR ROTACIÓN' };
+      });
+  }, [positions, ranking, heldSymbols]);
+
   return (
     <div>
       {/* ============ A. POSICIONES ============ */}
@@ -218,17 +236,35 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
           </span>
         </div>
 
-        {/* Resumen: Top-3 y dónde caen las posiciones de Alex */}
-        <div className="pf-rank-summary">
-          <div>
-            <span className="lbl">Top 3 candidatos (riesgo-ajustado)</span>
-            <span className="val">{topN.map(r => `${r.symbol} (${fmtPct(r.medianReturn)})`).join(' · ') || '—'}</span>
-          </div>
-          <div>
-            <span className="lbl">Tus posiciones en el ranking</span>
-            <span className="val">
-              {heldRanked.length === 0 ? '—' : heldRanked.map(r => `${r.symbol}: puesto ${r.rank} de ${ranking.length}`).join(' · ')}
+        {/* Recomendación de rotación — postura explícita, model-based */}
+        <div className="pf-reco">
+          <div className="pf-reco-head">
+            <span className="lbl">Recomendación de rotación · {horizonLabel}</span>
+            <span className="pf-reco-top">
+              Mejor del universo: {topN.map(r => `${r.symbol} (${fmtPct(r.medianReturn)})`).join(' · ') || '—'}
             </span>
+          </div>
+          {recos.length === 0 && (
+            <div className="pf-reco-row" style={{ color: '#6b6558' }}>
+              Agregá una posición arriba para ver una lectura de rotación sobre tu cartera.
+            </div>
+          )}
+          {recos.map(({ held, better, action }) => (
+            <div key={held.symbol} className="pf-reco-row">
+              <span className={`pf-reco-tag ${action === 'MANTENER' ? 'hold' : 'rotate'}`}>{action}</span>
+              <span className="pf-reco-text">
+                <strong>{held.symbol}</strong> (puesto {held.rank}/{ranking.length} · retorno med. {fmtPct(held.medianReturn)},
+                P(&gt;0) {(held.probPositive * 100).toFixed(0)}%)
+                {action === 'MANTENER'
+                  ? ' — ningún candidato le gana en retorno ajustado por riesgo y al naive. El modelo sugiere mantener.'
+                  : <> — el modelo sugiere evaluar rotar hacia: {better.map(b =>
+                      `${b.symbol} (${fmtPct(b.medianReturn)}, P(>0) ${(b.probPositive * 100).toFixed(0)}%)`).join(' · ')}.</>}
+              </span>
+            </div>
+          ))}
+          <div className="pf-reco-foot">
+            Lectura <strong>model-based</strong> (proyección GBM, reusa el motor). Es orientación probabilística con supuestos
+            explícitos, <strong>no una orden ni garantía</strong>. La decisión final es tuya · uso educacional.
           </div>
         </div>
 
