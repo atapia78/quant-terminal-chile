@@ -13,8 +13,10 @@ import ProjectionsPanel from './components/ProjectionsPanel.jsx';
 import PositionSizing from './components/PositionSizing.jsx';
 import QuantSummary from './components/QuantSummary.jsx';
 import CSVImportModal from './components/CSVImportModal.jsx';
+import PortfolioView from './components/PortfolioView.jsx';
 
 export default function App() {
+  const [view, setView] = useState('analisis');
   const [tickerKey, setTickerKey] = useState('COPEC');
   const [customStock, setCustomStock] = useState(null);
   const [showImport, setShowImport] = useState(false);
@@ -199,6 +201,22 @@ export default function App() {
         </div>
       )}
 
+      <div className="view-nav">
+        <button className={`view-tab ${view === 'analisis' ? 'active' : ''}`} onClick={() => setView('analisis')}>Análisis</button>
+        <button className={`view-tab ${view === 'portafolio' ? 'active' : ''}`} onClick={() => setView('portafolio')}>Mi Portafolio</button>
+      </div>
+
+      {view === 'portafolio' && (
+        <PortfolioView
+          universe={IPSA_BUNDLE}
+          bySymbol={IPSA_BY_SYMBOL}
+          liveData={liveData}
+          onRefreshTicker={refreshTicker}
+          loading={loading}
+        />
+      )}
+
+      {view === 'analisis' && (<>
       <div className="top-stats">
         <div className="stat-cell">
           <span className="stat-label">Instrumento</span>
@@ -255,6 +273,7 @@ export default function App() {
         <PositionSizing latest={latest} currency={currency} />
         <QuantSummary stats={stats} latest={latest} tickerSymbol={stock.symbol} />
       </div>
+      </>)}
 
       <div className="footer-note">
         <span>
