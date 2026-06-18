@@ -63,18 +63,10 @@ export function useYahooQuotes() {
   return { fetchSymbol, loading, error, clearCache };
 }
 
-// Mapeo de nemo IPSA → ticker Yahoo Finance
-// La mayoría siguen el patrón NEMO.SN
-export const YAHOO_SYMBOL_MAP = {
-  'COPEC': 'COPEC.SN',
-  'SQM-B': 'SQM-B.SN',
-  'CHILE': 'CHILE.SN',
-  'FALABELLA': 'FALABELLA.SN',
-  'ENELCHILE': 'ENELCHILE.SN',
-  'LTM': 'LTM.SN',
-  'CMPC': 'CMPC.SN',
-};
+// Mapeo de nemo → ticker Yahoo Finance.
+// Centralizado en el universo multi-mercado: CL → NEMO.SN, US → NEMO directo.
+import { yfSymbol } from '../data/universe.js';
 
 export function yahooSymbolFor(nemo) {
-  return YAHOO_SYMBOL_MAP[nemo] || `${nemo}.SN`;
+  return yfSymbol(nemo);
 }

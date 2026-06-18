@@ -191,8 +191,13 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
 
         {/* Alta de posición */}
         <div className="pf-add">
-          <select value={newTicker} onChange={e => setNewTicker(e.target.value)} className="pf-input">
-            {universe.map(u => <option key={u.symbol} value={u.symbol}>{u.symbol} · {u.name}</option>)}
+          <select value={newTicker} onChange={e => setNewTicker(e.target.value)} className="pf-input" style={{ width: 260 }}>
+            <optgroup label="Chile (IPSA)">
+              {universe.filter(u => (u.market || 'CL') === 'CL').map(u => <option key={u.symbol} value={u.symbol}>{u.symbol} · {u.name}</option>)}
+            </optgroup>
+            <optgroup label="EE.UU.">
+              {universe.filter(u => u.market === 'US').map(u => <option key={u.symbol} value={u.symbol}>{u.symbol} · {u.name}</option>)}
+            </optgroup>
           </select>
           <input className="pf-input" type="number" min="0" value={newQty}
             onChange={e => setNewQty(Number(e.target.value) || 0)} placeholder="cantidad" />

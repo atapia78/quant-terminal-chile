@@ -1,7 +1,16 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import './App.css';
 
-import { IPSA_BUNDLE, IPSA_BY_SYMBOL } from './data/ipsaBundle.js';
+// Persistencia del último fetch real por ticker (quick win #1):
+// al abrir, mostramos el último dato live con su marca de tiempo;
+// el bundle sintético solo si nunca se hizo fetch.
+const LIVE_KEY = 'qtc.live.v1';
+function loadLiveData() {
+  try { return JSON.parse(localStorage.getItem(LIVE_KEY)) || {}; }
+  catch { return {}; }
+}
+
+import { UNIVERSE, UNIVERSE_BY_SYMBOL, MARKETS } from './data/universe.js';
 import { sma, ema, rsi, macd, bollinger, atr } from './lib/indicators.js';
 import { computeStats, histogram } from './lib/stats.js';
 import { useYahooQuotes, yahooSymbolFor } from './lib/useYahooQuotes.js';
@@ -20,9 +29,15 @@ export default function App() {
   const [tickerKey, setTickerKey] = useState('COPEC');
   const [customStock, setCustomStock] = useState(null);
   const [showImport, setShowImport] = useState(false);
-  const [liveData, setLiveData] = useState({});
+  const [liveData, setLiveData] = useState(loadLiveData);
   const [fetchError, setFetchError] = useState(null);
   const [range, setRange] = useState('2y');
+
+  // Persiste cada fetch real; sobrevive a recargas.
+  useEffect(() => {
+    try { localStorage.setItem(LIVE_KEY, JSON.stringify(liveData)); }
+    catch { /* cuota / storage no disponible: no rompemos la app */ }
+  }, [liveData]);
 
   const { fetchSymbol, loading } = useYahooQuotes();
 
@@ -33,8 +48,8 @@ export default function App() {
   const stock = isCustom
     ? { ...customStock, name: customStock.symbol, sector: 'CSV Import', currency: customStock.currency || 'USD' }
     : live
-      ? { ...IPSA_BY_SYMBOL[tickerKey], bars: live.bars, currency: live.currency, fetchedAt: live.fetchedAt }
-      : IPSA_BY_SYMBOL[tickerKey];
+      ? { ...UNIVERSE_BY_SYMBOL[tickerKey], bars: live.bars, currency: live.currency, fetchedAt: live.fetchedAt }
+      : UNIVERSE_BY_SYMBOL[tickerKey];
 
   const refreshTicker = useCallback(async (nemo) => {
     setFetchError(null);
@@ -47,10 +62,13 @@ export default function App() {
     }
   }, [fetchSymbol, range]);
 
-  const refreshAll = useCallback(async () => {
+  // Refresca solo el mercado actual (no todo el universo) para no gatillar
+  // los rate limits (429) de Yahoo. Secuencial.
+  const refreshMarket = useCallback(async (marketKey) => {
     setFetchError(null);
     let errors = [];
-    for (const t of IPSA_BUNDLE) {
+    const list = UNIVERSE.filter(t => t.market === marketKey);
+    for (const t of list) {
       try {
         const data = await fetchSymbol(yahooSymbolFor(t.symbol), range);
         if (data) setLiveData(prev => ({ ...prev, [t.symbol]: data }));
@@ -103,6 +121,7 @@ export default function App() {
   const yearChg = (latest.close - yearStart.close) / yearStart.close;
 
   const currency = stock.currency || 'CLP';
+  const currentMarket = UNIVERSE_BY_SYMBOL[tickerKey]?.market || 'CL';
   const fmtPrice = v => currency === 'CLP'
     ? '$' + v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '$' + v.toFixed(2);
@@ -128,28 +147,28 @@ export default function App() {
           <span className="brand-sub">Bolsa de Santiago · v0.2</span>
         </div>
         <div className="header-right">
-          <div className="ticker-tabs">
-            {IPSA_BUNDLE.map(t => (
-              <button
-                key={t.symbol}
-                className={`ticker-pill ${tickerKey === t.symbol && !isCustom ? 'active' : ''}`}
-                onClick={() => setTickerKey(t.symbol)}
-                style={liveData[t.symbol] ? { borderLeft: '2px solid #82c5a4' } : {}}
-                title={liveData[t.symbol] ? 'Data live de Yahoo' : 'Data del bundle (sintética)'}
-              >
-                {t.symbol}
-              </button>
+          <select
+            className="ticker-pill"
+            value={isCustom ? customStock.symbol : tickerKey}
+            onChange={e => setTickerKey(e.target.value)}
+            style={{ paddingRight: 26, cursor: 'pointer', minWidth: 240 }}
+            title="Instrumento (agrupado por mercado) · ● = data live cargada"
+          >
+            {MARKETS.map(m => (
+              <optgroup key={m.key} label={m.label}>
+                {m.tickers.map(t => (
+                  <option key={t.symbol} value={t.symbol}>
+                    {liveData[t.symbol] ? '● ' : ''}{t.symbol} · {t.name}
+                  </option>
+                ))}
+              </optgroup>
             ))}
             {customStock && (
-              <button
-                className={`ticker-pill ${isCustom ? 'active' : ''}`}
-                onClick={() => setTickerKey(customStock.symbol)}
-                style={{ borderColor: '#82c5a4' }}
-              >
-                {customStock.symbol}
-              </button>
+              <optgroup label="CSV">
+                <option value={customStock.symbol}>{customStock.symbol}</option>
+              </optgroup>
             )}
-          </div>
+          </select>
           {!isCustom && (
             <>
               <select
@@ -174,12 +193,12 @@ export default function App() {
               </button>
               <button
                 className="import-btn"
-                onClick={refreshAll}
+                onClick={() => refreshMarket(currentMarket)}
                 disabled={loading}
-                title="Refresca las 7 acciones del bundle"
+                title={`Refresca todo el mercado ${currentMarket} (secuencial, para no gatillar 429)`}
                 style={{ color: '#e8b86a', borderColor: '#3d342a' }}
               >
-                ↻ ALL
+                ↻ {currentMarket}
               </button>
             </>
           )}
@@ -208,8 +227,8 @@ export default function App() {
 
       {view === 'portafolio' && (
         <PortfolioView
-          universe={IPSA_BUNDLE}
-          bySymbol={IPSA_BY_SYMBOL}
+          universe={UNIVERSE}
+          bySymbol={UNIVERSE_BY_SYMBOL}
           liveData={liveData}
           onRefreshTicker={refreshTicker}
           loading={loading}
