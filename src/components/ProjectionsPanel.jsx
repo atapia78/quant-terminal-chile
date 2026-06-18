@@ -109,7 +109,7 @@ export default function ProjectionsPanel({ bars, currency = 'CLP' }) {
   const probDown = 1 - probAbove({ S0, mu, sigma, days: horizon, target: S0 * (1 - targetPct / 100) });
 
   const fmt = (v) => v == null ? '—' : currency === 'CLP'
-    ? '$' + Math.round(v).toLocaleString('es-CL')
+    ? '$' + v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '$' + v.toFixed(2);
 
   // Cono al final del horizonte (para el resumen)
@@ -177,7 +177,7 @@ export default function ProjectionsPanel({ bars, currency = 'CLP' }) {
             stroke="#3a3530"
             tick={{ fontSize: 10, fontFamily: 'JetBrains Mono', fill: '#6b6558' }}
             domain={['auto', 'auto']}
-            tickFormatter={v => currency === 'CLP' ? Math.round(v).toLocaleString('es-CL') : v.toFixed(0)}
+            tickFormatter={v => currency === 'CLP' ? v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v.toFixed(2)}
             width={60}
           />
           <Tooltip

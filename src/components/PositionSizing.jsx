@@ -12,7 +12,7 @@ export default function PositionSizing({ latest, currency = 'CLP' }) {
   const leverage = account > 0 ? posValue / account : 0;
 
   const fmt = (v) => currency === 'CLP'
-    ? '$' + Math.round(v).toLocaleString('es-CL')
+    ? '$' + v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
   return (

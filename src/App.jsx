@@ -102,7 +102,7 @@ export default function App() {
 
   const currency = stock.currency || 'CLP';
   const fmtPrice = v => currency === 'CLP'
-    ? '$' + Math.round(v).toLocaleString('es-CL')
+    ? '$' + v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '$' + v.toFixed(2);
 
   function handleImport({ symbol, bars }) {

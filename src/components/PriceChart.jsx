@@ -6,7 +6,7 @@ import {
 export default function PriceChart({ enriched, currency = 'CLP' }) {
   const interval = Math.floor(enriched.length / 8);
   const fmt = v => v == null ? '—' : currency === 'CLP'
-    ? '$' + Math.round(v).toLocaleString('es-CL')
+    ? '$' + Number(v).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '$' + Number(v).toFixed(2);
 
   return (
@@ -28,7 +28,7 @@ export default function PriceChart({ enriched, currency = 'CLP' }) {
             stroke="#3a3530"
             tick={{ fontSize: 10, fontFamily: 'JetBrains Mono', fill: '#6b6558' }}
             domain={['auto', 'auto']}
-            tickFormatter={v => currency === 'CLP' ? Math.round(v).toLocaleString('es-CL') : v.toFixed(0)}
+            tickFormatter={v => currency === 'CLP' ? v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v.toFixed(2)}
             width={62}
           />
           <Tooltip
