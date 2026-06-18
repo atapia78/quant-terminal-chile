@@ -21,6 +21,8 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   const [newTicker, setNewTicker] = useState(universe[0]?.symbol || '');
   const [newQty, setNewQty] = useState(100);
   const [liveMsg, setLiveMsg] = useState(null);
+  const [rankMsg, setRankMsg] = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const persist = useCallback((next) => {
     setPositions(next);
@@ -71,6 +73,23 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
       await new Promise(res => setTimeout(res, 350));
     }
     setLiveMsg(`${ok}/${list.length} en vivo${fail.length ? ` · sin data: ${fail.join(', ')}` : ''}`);
+  }
+
+  // Trae TODO el universo en vivo (acción manual explícita). Secuencial con respiro
+  // anti-429; al terminar, el ranking ya corre con data real.
+  async function refreshAllLive() {
+    if (bulkLoading) return;
+    setBulkLoading(true);
+    let ok = 0; const fail = [];
+    for (let i = 0; i < universe.length; i++) {
+      const u = universe[i];
+      setRankMsg(`Cargando ${i + 1}/${universe.length}…`);
+      const success = await onRefreshTicker(u.symbol);
+      if (success) ok++; else fail.push(u.symbol);
+      await new Promise(res => setTimeout(res, 400));
+    }
+    setRankMsg(`${ok}/${universe.length} en vivo${fail.length ? ` · sin data (símbolo no válido en Yahoo o 429): ${fail.join(', ')}` : ''}`);
+    setBulkLoading(false);
   }
 
   // ---------- Totales por moneda ----------
@@ -240,10 +259,16 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
       <div className="panel" style={{ marginBottom: 18 }}>
         <div className="panel-title">
           <span>Comparador de rotación · <span className="accent">retorno proyectado {horizonLabel}</span></span>
-          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {rankMsg && <span style={{ fontSize: 11, color: '#a89f8e', fontFamily: 'JetBrains Mono, monospace' }}>{rankMsg}</span>}
             <select value={horizonDays} onChange={e => setHorizonDays(+e.target.value)} className="pf-input">
               {HORIZONS.map(h => <option key={h.days} value={h.days}>{h.label}</option>)}
             </select>
+            <button className="import-btn" onClick={refreshAllLive} disabled={bulkLoading}
+              title={`Baja en vivo las ${universe.length} acciones del universo (secuencial, ~${Math.round(universe.length * 0.4)}s, anti-429)`}
+              style={{ color: '#82c5a4', borderColor: '#2e4636' }}>
+              {bulkLoading ? '...' : '↻ Todo en vivo'}
+            </button>
             <button className="import-btn" onClick={() => setRecalcNonce(n => n + 1)}
               title="Recalcula el ranking con la data disponible (bundle + lo cargado con LIVE)">↻ Recalcular</button>
           </span>
