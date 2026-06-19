@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, HORIZONS } from '../lib/portfolio.js';
+import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, HORIZONS } from '../lib/portfolio.js';
 
 // Formato de moneda: CLP chileno 2 decimales ($6.713,00) · USD 2 decimales ($185.42)
 function fmtMoney(v, moneda) {
@@ -130,6 +130,33 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     return { ranking: comparable, excluded: rest, basis: anyLive ? 'live' : 'synthetic' };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [universe, horizonDays, liveData, recalcNonce]);
+
+  // ---------- Riesgo de cartera (Markowitz) ----------
+  const cartera = useMemo(() => {
+    const seen = new Set();
+    const entries = positions
+      .filter(p => (seen.has(p.ticker) ? false : seen.add(p.ticker)))
+      .map(p => ({ symbol: p.ticker, bars: getBars(p.ticker) }));
+    const { symbols, months, series, excluded } = alignMonthlyReturns(entries);
+    if (symbols.length === 0 || months.length < 2) {
+      return { ok: false, symbols, excluded, n: months.length };
+    }
+    // Pesos = valor de mercado por papel / total (sobre los incluidos).
+    const mvBy = {}; let total = 0; let firstCur = null; let mixedCur = false; let anyBundle = false;
+    for (const p of positions) {
+      if (!symbols.includes(p.ticker)) continue;
+      const price = priceOf(p.ticker);
+      const mv = price != null ? price * p.cantidad : 0;
+      mvBy[p.ticker] = (mvBy[p.ticker] || 0) + mv;
+      total += mv;
+      if (firstCur == null) firstCur = p.moneda; else if (p.moneda !== firstCur) mixedCur = true;
+      if (!isLive(p.ticker)) anyBundle = true;
+    }
+    if (total <= 0) return { ok: false, symbols, excluded, n: months.length };
+    const weights = symbols.map(s => (mvBy[s] || 0) / total);
+    const risk = portfolioRisk({ symbols, series, weights });
+    return { ok: true, symbols, weights, risk, excluded, n: months.length, mixedCur, anyBundle };
+  }, [positions, getBars, priceOf, isLive]);
 
   const heldSymbols = useMemo(() => new Set(positions.map(p => p.ticker)), [positions]);
   const horizonLabel = HORIZONS.find(h => h.days === horizonDays)?.label || `${horizonDays}d`;
@@ -262,6 +289,77 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
             onChange={e => setNewQty(Number(e.target.value) || 0)} placeholder="cantidad" />
           <button className="import-btn" onClick={addPosition}>+ Agregar posición</button>
         </div>
+      </div>
+
+      {/* ============ RIESGO DE CARTERA (Markowitz) ============ */}
+      <div className="panel" style={{ marginBottom: 18 }}>
+        <div className="panel-title">
+          <span>Riesgo de cartera · <span className="accent">Markowitz</span></span>
+          {cartera.ok && <span style={{ fontSize: 11, color: '#a89f8e', fontFamily: 'JetBrains Mono, monospace' }}>{cartera.n} meses comunes</span>}
+        </div>
+
+        {!cartera.ok ? (
+          <p className="rd-note">Necesitás al menos 2 papeles con historia mensual común. Agregá posiciones y dale ↻ Precios vivos.</p>
+        ) : (
+          <>
+            {cartera.anyBundle && <div className="pf-reco-illustrative">⚠ Ilustrativo — algún papel corre sobre bundle sintético. Dale ↻ Precios vivos para historia real.</div>}
+            {cartera.mixedCur && <div className="pf-reco-illustrative">⚠ Cartera con CLP y USD: este riesgo v1 <strong>NO incluye el efecto cambiario</strong> (pesos por valor de mercado nominal).</div>}
+            {cartera.n < 24 && <div className="pf-reco-illustrative">⚠ Solo {cartera.n} meses comunes — covarianza poco robusta (&lt;24).</div>}
+
+            <div className="pf-totals" style={{ borderTop: 'none', paddingTop: 0, marginTop: 0 }}>
+              <div className="pf-total-cell">
+                <span className="lbl">Riesgo cartera σ_P (anual)</span>
+                <span className="val">{fmtPct(cartera.risk.sigmaP, false)}</span>
+              </div>
+              <div className="pf-total-cell">
+                <span className="lbl">Σ wᵢ·σᵢ (sin diversificar)</span>
+                <span className="val">{fmtPct(cartera.risk.weightedSumVol, false)}</span>
+              </div>
+              <div className="pf-total-cell">
+                <span className="lbl">Beneficio diversificación</span>
+                <span className="val" style={{ color: cartera.risk.diversification > 0 ? '#82c5a4' : '#a89f8e' }}>
+                  {fmtPct(cartera.risk.diversification, false)}
+                </span>
+              </div>
+              <div className="pf-total-cell">
+                <span className="lbl">Retorno cartera R_P (anual)</span>
+                <span className="val" style={{ color: cartera.risk.retP >= 0 ? '#82c5a4' : '#d97757' }}>{fmtPct(cartera.risk.retP)}</span>
+              </div>
+            </div>
+
+            {cartera.symbols.length >= 2 ? (
+              <div style={{ overflowX: 'auto', marginTop: 14 }}>
+                <div className="rd-note" style={{ marginTop: 0, marginBottom: 6 }}>Matriz de correlación — pares cercanos a 1 = poca diversificación.</div>
+                <table className="pf-table">
+                  <thead>
+                    <tr><th></th>{cartera.symbols.map((s, i) => <th key={s}>{s}<br /><span style={{ color: '#6b6558' }}>{(cartera.weights[i] * 100).toFixed(0)}%</span></th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {cartera.symbols.map((si, i) => (
+                      <tr key={si}>
+                        <td><strong>{si}</strong></td>
+                        {cartera.symbols.map((sj, j) => {
+                          const c = cartera.risk.corr[i][j];
+                          const col = i === j ? '#6b6558' : c > 0.7 ? '#d97757' : c < 0.3 ? '#82c5a4' : '#c9bfa8';
+                          return <td key={sj} style={{ color: col }}>{c.toFixed(2)}</td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="rd-note">Con 1 papel no hay diversificación ni correlación; agregá otro para compararlos.</p>
+            )}
+
+            {cartera.excluded.length > 0 && (
+              <p className="rd-note">Sin historia suficiente (excluidos del cálculo): {cartera.excluded.join(', ')}.</p>
+            )}
+            <p className="rd-note">
+              σ_P = √(wᵀΩw) con Ω = varianza-covarianza muestral de retornos mensuales log alineados (anualizada ×√12). σ_P &lt; Σ wᵢσᵢ cuando la correlación es &lt;1. Educacional, no asesoría.
+            </p>
+          </>
+        )}
       </div>
 
       {/* ============ B. COMPARADOR DE ROTACIÓN ============ */}

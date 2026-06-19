@@ -12,6 +12,7 @@
 
 import { closedFormCone, probAbove } from './projections.js';
 import { dailyReturns } from './stats.js';
+import { resampleMonthly, periodReturns } from './returns.js';
 
 const STORAGE_KEY = 'qtc.portfolio.v1';
 const TD = 252;
@@ -112,6 +113,69 @@ export const VERDICT_THRESHOLDS = {
   atractivo: { prob: 0.55, riskAdj: 0.40 }, // Atractivo: supera estos + gana al naive + retorno>0
   debil:     { prob: 0.45 },                // Débil: bajo este P(>0), o pierde con naive, o retorno<=0
 };
+
+// ============================================================
+// RIESGO DE CARTERA (Markowitz) — ver docs/metodologia-mdf.md
+// ============================================================
+const MPY = 12; // meses por año (anualización de retornos mensuales)
+
+// Retornos mensuales log indexados por mes 'YYYY-MM'.
+function monthlyLogByMonth(bars) {
+  const map = new Map();
+  for (const x of periodReturns(resampleMonthly(bars || []), 'log')) map.set(x.period, x.r);
+  return map;
+}
+
+// Alinea por meses comunes (intersección) los retornos mensuales de varios papeles.
+// entries: [{ symbol, bars }]. Excluye los que no tienen historia suficiente.
+export function alignMonthlyReturns(entries, minMonths = 2) {
+  const maps = entries.map(e => ({ symbol: e.symbol, map: monthlyLogByMonth(e.bars) }));
+  const usable = maps.filter(m => m.map.size >= minMonths);
+  const excluded = maps.filter(m => m.map.size < minMonths).map(m => m.symbol);
+  if (usable.length === 0) return { symbols: [], months: [], series: {}, excluded };
+  let common = null;
+  for (const m of usable) {
+    const keys = new Set(m.map.keys());
+    common = common ? new Set([...common].filter(k => keys.has(k))) : keys;
+  }
+  const months = [...common].sort();
+  const series = {};
+  for (const m of usable) series[m.symbol] = months.map(k => m.map.get(k));
+  return { symbols: usable.map(m => m.symbol), months, series, excluded };
+}
+
+// Matriz de varianza-covarianza muestral (s_xy = Σ(x−x̄)(y−ȳ)/(n−1)) MENSUAL.
+export function covarianceMatrix(series, symbols) {
+  const n = symbols.length ? series[symbols[0]].length : 0;
+  const means = {};
+  symbols.forEach(s => { means[s] = series[s].reduce((a, b) => a + b, 0) / n; });
+  const cov = symbols.map(si => symbols.map(sj => {
+    let s = 0;
+    for (let t = 0; t < n; t++) s += (series[si][t] - means[si]) * (series[sj][t] - means[sj]);
+    return n > 1 ? s / (n - 1) : 0;
+  }));
+  return { cov, means, n };
+}
+
+// Riesgo/retorno de cartera anualizados + correlación + beneficio de diversificación.
+// weights alineado al orden de symbols (debe sumar ~1).
+export function portfolioRisk({ symbols, series, weights }) {
+  const { cov, means, n } = covarianceMatrix(series, symbols);
+  const k = symbols.length;
+  // varianza mensual de cartera wᵀΩw
+  let varM = 0;
+  for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) varM += weights[i] * weights[j] * cov[i][j];
+  const sigmaP = Math.sqrt(Math.max(0, varM)) * Math.sqrt(MPY);          // anualizada
+  const sigmaInd = symbols.map((_, i) => Math.sqrt(Math.max(0, cov[i][i])) * Math.sqrt(MPY));
+  const weightedSumVol = symbols.reduce((a, _, i) => a + weights[i] * sigmaInd[i], 0); // Σ wᵢσᵢ
+  const retP = symbols.reduce((a, sym, i) => a + weights[i] * means[sym], 0) * MPY;
+  // matriz de correlación
+  const corr = symbols.map((_, i) => symbols.map((__, j) => {
+    const d = Math.sqrt(cov[i][i] * cov[j][j]);
+    return d > 0 ? cov[i][j] / d : (i === j ? 1 : 0);
+  }));
+  return { sigmaP, sigmaInd, weightedSumVol, retP, corr, n, diversification: weightedSumVol - sigmaP };
+}
 
 export function rotationVerdict(p) {
   if (!p) return { label: '—', tone: 'neutral' };
