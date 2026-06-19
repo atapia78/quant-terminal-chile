@@ -227,7 +227,7 @@ position_size = (account × risk_pct) / (ATR × atr_multiplier)
 - [x] Import CSV (fallback / data custom)
 - [x] Position sizing
 - [x] Rule-based quant summary
-- [x] **Mi Portafolio + comparador de rotación** (posiciones reales con precio vivo, totales por moneda, ranking por retorno proyectado con cono + benchmark naive)
+- [x] **Taller MDF (Sesión 2):** CAGR / media geométrica + drag por volatilidad; vista "Distribución de retornos" (mensual/anual, log/aritmético, ajuste Normal + IC68/95/99); estacionalidad mensual.
 - [ ] Comparación entre tickers (correlación, beta)
 - [ ] Análisis de portafolio (Markowitz, risk parity)
 - [ ] Conversión CLP/USD automática (fetch del dólar observado)
@@ -235,11 +235,9 @@ position_size = (account × risk_pct) / (ATR × atr_multiplier)
 - [ ] Black-Scholes para opciones (cuando aplique al mercado CL)
 - [ ] AI deep-dive opcional vía función serverless adicional
 
-### Mi Portafolio — pendientes (siguiente iteración)
+## Deuda técnica
 
-- [ ] Libro de transacciones con histórico (fecha / tipo compra-venta / precio) y **costo promedio derivado** automáticamente (hoy el costo promedio se ingresa a mano).
-- [ ] Conversión **CLP/USD con FX** (dólar observado) para un total consolidado opcional — hoy los totales se muestran **separados por moneda** a propósito.
-- [ ] **Ranking en vivo de todo el universo** con caché persistente — hoy el ranking se calcula con la data disponible (bundle + lo cargado con LIVE) y se refresca con el botón "Recalcular", para no gatillar los rate limits (429) de Yahoo.
+- **El cono de proyección usa μ aritmético** (`mean·252`), no el CAGR geométrico. Sobre-estima el drift en presencia de volatilidad (drag geométrico). Pendiente: evaluar usar el geométrico o exponer ambos en el cono. Hoy el panel de Estadísticas ya muestra CAGR y la brecha ("drag por volatilidad") al lado del aritmético.
 
 ## Limitaciones honestas
 
