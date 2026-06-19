@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, HORIZONS } from '../lib/portfolio.js';
+import { detectDiscontinuity } from '../lib/returns.js';
+import { useYahooQuotes, yahooSymbolFor } from '../lib/useYahooQuotes.js';
 
 // Formato de moneda: CLP chileno 2 decimales ($6.713,00) · USD 2 decimales ($185.42)
 function fmtMoney(v, moneda) {
@@ -38,6 +40,29 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     return bars && bars.length ? bars[bars.length - 1].close : null;
   }, [getBars]);
   const isLive = useCallback((symbol) => !!liveData[symbol], [liveData]);
+
+  // Historia MÁXIMA por papel SOLO para el riesgo de cartera (Markowitz),
+  // independiente de la ventana del gráfico. Instancia de fetch propia (no aborta
+  // los fetches del resto), cacheada por símbolo. Secuencial con respiro anti-429.
+  const { fetchSymbol: fetchMaxSymbol } = useYahooQuotes();
+  const [maxBars, setMaxBars] = useState({});
+  const reqRef = useRef(new Set());
+  useEffect(() => {
+    const syms = [...new Set(positions.map(p => p.ticker))].filter(s => !reqRef.current.has(s));
+    if (syms.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const s of syms) {
+        reqRef.current.add(s);
+        try {
+          const d = await fetchMaxSymbol(yahooSymbolFor(s), 'max');
+          if (!cancelled && d && d.bars) setMaxBars(prev => ({ ...prev, [s]: d.bars }));
+        } catch { /* sin data viva: cae al fallback corto */ }
+        await new Promise(r => setTimeout(r, 350));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [positions, fetchMaxSymbol]);
 
   // ---------- CRUD posiciones ----------
   function updateField(idx, field, value) {
@@ -134,14 +159,21 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   // ---------- Riesgo de cartera (Markowitz) ----------
   const cartera = useMemo(() => {
     const seen = new Set();
-    const entries = positions
-      .filter(p => (seen.has(p.ticker) ? false : seen.add(p.ticker)))
-      .map(p => ({ symbol: p.ticker, bars: getBars(p.ticker) }));
+    const uniq = positions.filter(p => (seen.has(p.ticker) ? false : seen.add(p.ticker)));
+    // Serie de historia MÁXIMA por papel (si está); fallback a la ventana corta.
+    // Guard de discontinuidad ANTES de la covarianza: acota a tramo continuo.
+    const meta = {}; // symbol -> { live, cut }
+    const entries = uniq.map(p => {
+      const usingMax = !!maxBars[p.ticker];
+      const raw = (usingMax ? maxBars[p.ticker] : getBars(p.ticker)) || [];
+      const disc = detectDiscontinuity(raw);
+      meta[p.ticker] = { live: usingMax, cut: disc.cutDate };
+      return { symbol: p.ticker, bars: raw.slice(disc.startIndex || 0) };
+    });
     const { symbols, months, series, excluded } = alignMonthlyReturns(entries);
     if (symbols.length === 0 || months.length < 2) {
       return { ok: false, symbols, excluded, n: months.length };
     }
-    // Pesos = valor de mercado por papel / total (sobre los incluidos).
     const mvBy = {}; let total = 0; let firstCur = null; let mixedCur = false; let anyBundle = false;
     for (const p of positions) {
       if (!symbols.includes(p.ticker)) continue;
@@ -150,13 +182,14 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
       mvBy[p.ticker] = (mvBy[p.ticker] || 0) + mv;
       total += mv;
       if (firstCur == null) firstCur = p.moneda; else if (p.moneda !== firstCur) mixedCur = true;
-      if (!isLive(p.ticker)) anyBundle = true;
+      if (!meta[p.ticker]?.live) anyBundle = true;
     }
     if (total <= 0) return { ok: false, symbols, excluded, n: months.length };
     const weights = symbols.map(s => (mvBy[s] || 0) / total);
     const risk = portfolioRisk({ symbols, series, weights });
-    return { ok: true, symbols, weights, risk, excluded, n: months.length, mixedCur, anyBundle };
-  }, [positions, getBars, priceOf, isLive]);
+    const cuts = symbols.filter(s => meta[s]?.cut).map(s => `${s} desde ${meta[s].cut}`);
+    return { ok: true, symbols, weights, risk, excluded, n: months.length, mixedCur, anyBundle, cuts };
+  }, [positions, getBars, priceOf, maxBars]);
 
   const heldSymbols = useMemo(() => new Set(positions.map(p => p.ticker)), [positions]);
   const horizonLabel = HORIZONS.find(h => h.days === horizonDays)?.label || `${horizonDays}d`;
@@ -305,6 +338,9 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
             {cartera.anyBundle && <div className="pf-reco-illustrative">⚠ Ilustrativo — algún papel corre sobre bundle sintético. Dale ↻ Precios vivos para historia real.</div>}
             {cartera.mixedCur && <div className="pf-reco-illustrative">⚠ Cartera con CLP y USD: este riesgo v1 <strong>NO incluye el efecto cambiario</strong> (pesos por valor de mercado nominal).</div>}
             {cartera.n < 24 && <div className="pf-reco-illustrative">⚠ Solo {cartera.n} meses comunes — covarianza poco robusta (&lt;24).</div>}
+            {cartera.cuts && cartera.cuts.length > 0 && (
+              <p className="rd-note" style={{ marginTop: 0 }}>Acotado por quiebre estructural: {cartera.cuts.join(' · ')}.</p>
+            )}
 
             <div className="pf-totals" style={{ borderTop: 'none', paddingTop: 0, marginTop: 0 }}>
               <div className="pf-total-cell">
