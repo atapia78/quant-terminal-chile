@@ -227,12 +227,17 @@ position_size = (account × risk_pct) / (ATR × atr_multiplier)
 - [x] Import CSV (fallback / data custom)
 - [x] Position sizing
 - [x] Rule-based quant summary
+- [x] **Taller MDF (Sesión 2):** CAGR / media geométrica + drag por volatilidad; vista "Distribución de retornos" (mensual/anual, log/aritmético, ajuste Normal + IC68/95/99); estacionalidad mensual.
 - [ ] Comparación entre tickers (correlación, beta)
 - [ ] Análisis de portafolio (Markowitz, risk parity)
 - [ ] Conversión CLP/USD automática (fetch del dólar observado)
 - [ ] Backtest de estrategias técnicas
 - [ ] Black-Scholes para opciones (cuando aplique al mercado CL)
 - [ ] AI deep-dive opcional vía función serverless adicional
+
+## Deuda técnica
+
+- **El cono de proyección usa μ aritmético** (`mean·252`), no el CAGR geométrico. Sobre-estima el drift en presencia de volatilidad (drag geométrico). Pendiente: evaluar usar el geométrico o exponer ambos en el cono. Hoy el panel de Estadísticas ya muestra CAGR y la brecha ("drag por volatilidad") al lado del aritmético.
 
 ## Limitaciones honestas
 

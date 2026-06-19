@@ -566,3 +566,36 @@
   .top-stats { grid-template-columns: 1fr 1fr 1fr; }
   .stat-cell:first-child { grid-column: 1 / -1; }
 }
+
+/* ============ Distribución de retornos / Estacionalidad (Taller MDF) ============ */
+.rd-flag {
+  margin-bottom: 10px; padding: 8px 10px; border-radius: 3px; font-size: 11px; line-height: 1.5;
+  background: rgba(232,184,106,0.08); border: 1px solid #3d342a; color: #e8b86a;
+  font-family: 'JetBrains Mono', monospace;
+}
+.rd-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; align-items: start; }
+.rd-side { font-family: 'JetBrains Mono', monospace; }
+.rd-fit { display: flex; gap: 18px; flex-wrap: wrap; }
+.rd-fit .lbl { display: block; font-size: 10px; color: #6b6558; text-transform: uppercase; letter-spacing: 0.05em; }
+.rd-fit .val { font-size: 18px; color: #e8e3d8; }
+.rd-note { margin-top: 8px; font-size: 10px; color: #6b6558; font-family: 'JetBrains Mono', monospace; line-height: 1.5; }
+.rd-freq { margin-top: 12px; font-family: 'JetBrains Mono', monospace; }
+.rd-freq summary { cursor: pointer; color: #a89f8e; font-size: 11px; }
+.rd-freq table { margin-top: 8px; max-width: 420px; }
+.rd-season { margin-top: 18px; padding-top: 12px; border-top: 1px solid #2a2520; }
+.rd-season-head { font-size: 11px; color: #a89f8e; font-family: 'JetBrains Mono', monospace; }
+.rd-table-mini th, .rd-table-mini td { font-size: 10px; }
+@media (max-width: 960px) { .rd-grid { grid-template-columns: 1fr; } }
+
+/* ---- tablas / inputs compactos (compartidos) ---- */
+.pf-table { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.pf-table th {
+  text-align: left; color: #6b6558; font-weight: 500; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 6px 10px; border-bottom: 1px solid #2a2520; white-space: nowrap;
+}
+.pf-table td { padding: 7px 10px; border-bottom: 1px solid #1c1916; color: #e8e3d8; white-space: nowrap; }
+.pf-input {
+  background: #0d0c0a; border: 1px solid #2a2520; color: #e8e3d8;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 5px 8px; border-radius: 3px;
+}
+.pf-input:focus { outline: none; border-color: #e8b86a; }

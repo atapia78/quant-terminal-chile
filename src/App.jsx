@@ -4,12 +4,14 @@ import './App.css';
 import { IPSA_BUNDLE, IPSA_BY_SYMBOL } from './data/ipsaBundle.js';
 import { sma, ema, rsi, macd, bollinger, atr } from './lib/indicators.js';
 import { computeStats, histogram } from './lib/stats.js';
+import { computeCAGR } from './lib/returns.js';
 import { useYahooQuotes, yahooSymbolFor } from './lib/useYahooQuotes.js';
 
 import PriceChart from './components/PriceChart.jsx';
 import StatsPanel from './components/StatsPanel.jsx';
 import IndicatorsRow from './components/IndicatorsRow.jsx';
 import ProjectionsPanel from './components/ProjectionsPanel.jsx';
+import ReturnsDistribution from './components/ReturnsDistribution.jsx';
 import PositionSizing from './components/PositionSizing.jsx';
 import QuantSummary from './components/QuantSummary.jsx';
 import CSVImportModal from './components/CSVImportModal.jsx';
@@ -87,6 +89,8 @@ export default function App() {
     if (!stats) return [];
     return histogram(stats.returns, 22);
   }, [stats]);
+
+  const cagr = useMemo(() => computeCAGR(enriched), [enriched]);
 
   if (!stock || enriched.length === 0) {
     return <div className="terminal">Cargando...</div>;
@@ -242,7 +246,7 @@ export default function App() {
 
       <div className="grid-main">
         <PriceChart enriched={enriched} currency={currency} />
-        <StatsPanel stats={stats} yearChg={yearChg} />
+        <StatsPanel stats={stats} yearChg={yearChg} cagr={cagr} />
       </div>
 
       <IndicatorsRow enriched={enriched} hist={hist} latest={latest} statsN={stats?.n ?? 0} />
@@ -250,6 +254,8 @@ export default function App() {
       <div style={{ marginBottom: 18 }}>
         <ProjectionsPanel bars={enriched} currency={currency} />
       </div>
+
+      <ReturnsDistribution bars={enriched} dataSource={dataSource} />
 
       <div className="grid-bottom">
         <PositionSizing latest={latest} currency={currency} />
