@@ -681,3 +681,13 @@
 .rd-dist-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #e8b86a; letter-spacing: 0.05em; }
 .rd-shortflag { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #d97757; border: 1px solid #4a2f28; border-radius: 3px; padding: 1px 6px; }
 @media (max-width: 960px) { .rd-dist-grid { grid-template-columns: 1fr; } }
+
+/* ============ TIR money-weighted por posición ============ */
+.pf-tir-toggle {
+  display: block; margin-top: 6px; background: transparent; border: none; cursor: pointer;
+  color: #82c5a4; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.05em; padding: 0;
+}
+.pf-tir-toggle:hover { color: #a6e0c4; }
+.pf-tir-row > td { background: #0d0c0a; border-bottom: 1px solid #2a2520; }
+.pf-tir { padding: 6px 4px 10px; }
+.pf-tir-line { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #e8e3d8; margin: 4px 0 0; line-height: 1.5; }

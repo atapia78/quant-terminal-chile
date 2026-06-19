@@ -177,6 +177,57 @@ export function portfolioRisk({ symbols, series, weights }) {
   return { sigmaP, sigmaInd, weightedSumVol, retP, corr, n, diversification: weightedSumVol - sigmaP };
 }
 
+// ============================================================
+// TIR money-weighted (XIRR) — ver docs/metodologia-mdf.md
+// flows: [{ t (años, Actual/365), cf (con signo) }]
+// ============================================================
+export function xirr(flows) {
+  if (!flows || flows.length < 2) return null;
+  const npv = (r) => flows.reduce((s, f) => s + f.cf / Math.pow(1 + r, f.t), 0);
+  const dnpv = (r) => flows.reduce((s, f) => s + (-f.t * f.cf) / Math.pow(1 + r, f.t + 1), 0);
+
+  // Newton desde r=0.1
+  let r = 0.1;
+  for (let i = 0; i < 50; i++) {
+    const v = npv(r), d = dnpv(r);
+    if (!isFinite(v) || !isFinite(d) || d === 0) break;
+    const rn = r - v / d;
+    if (!isFinite(rn)) break;
+    if (Math.abs(rn - r) < 1e-7) { if (rn > -0.9999) return rn; break; }
+    r = rn;
+    if (r <= -0.9999) break;
+  }
+  // Bisección en [-0.9999, 10] si hay cambio de signo
+  let lo = -0.9999, hi = 10;
+  const flo = npv(lo), fhi = npv(hi);
+  if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) return null;
+  let a = lo, b = hi, fa = flo;
+  for (let i = 0; i < 200; i++) {
+    const mid = (a + b) / 2, fm = npv(mid);
+    if (!isFinite(fm)) return null;
+    if (Math.abs(fm) < 1e-7 || (b - a) < 1e-9) return mid;
+    if (fa * fm < 0) b = mid; else { a = mid; fa = fm; }
+  }
+  return (a + b) / 2;
+}
+
+// CAGR time-weighted del activo entre date0 y el último cierre de la serie.
+// Toma el close más cercano a date0. (Pasar bars ya acotada por discontinuidad.)
+export function cagrBetween(bars, date0) {
+  if (!bars || bars.length < 2 || !date0) return null;
+  const t0 = new Date(date0).getTime();
+  let best = null, bestDiff = Infinity;
+  for (const b of bars) {
+    const diff = Math.abs(new Date(b.date).getTime() - t0);
+    if (diff < bestDiff) { bestDiff = diff; best = b; }
+  }
+  const last = bars[bars.length - 1];
+  if (!best || !last) return null;
+  const days = (new Date(last.date).getTime() - new Date(best.date).getTime()) / 864e5;
+  if (days <= 0 || !(best.close > 0) || !(last.close > 0)) return null;
+  return Math.pow(last.close / best.close, 365 / days) - 1;
+}
+
 export function rotationVerdict(p) {
   if (!p) return { label: '—', tone: 'neutral' };
   const { medianReturn, beatsNaive, probPositive, riskAdj } = p;

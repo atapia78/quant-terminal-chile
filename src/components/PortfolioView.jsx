@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, HORIZONS } from '../lib/portfolio.js';
+import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, xirr, cagrBetween, HORIZONS } from '../lib/portfolio.js';
 import { detectDiscontinuity } from '../lib/returns.js';
 import { useYahooQuotes, yahooSymbolFor } from '../lib/useYahooQuotes.js';
 
@@ -25,6 +25,7 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
   const [liveMsg, setLiveMsg] = useState(null);
   const [rankMsg, setRankMsg] = useState(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [expandedTir, setExpandedTir] = useState(new Set());
 
   const persist = useCallback((next) => {
     setPositions(next);
@@ -82,6 +83,20 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
       cantidad: Number(newQty) || 0, costoPromedio: null,
     }];
     persist(next);
+  }
+
+  // ---------- Lotes / TIR (aditivo: campo opcional `lotes`) ----------
+  function toggleTir(idx) {
+    setExpandedTir(s => { const n = new Set(s); n.has(idx) ? n.delete(idx) : n.add(idx); return n; });
+  }
+  function addLote(idx) {
+    updateField(idx, 'lotes', [...(positions[idx].lotes || []), { fecha: '', cantidad: 0, precio: 0 }]);
+  }
+  function updateLote(idx, li, field, value) {
+    updateField(idx, 'lotes', (positions[idx].lotes || []).map((l, i) => i === li ? { ...l, [field]: value } : l));
+  }
+  function removeLote(idx, li) {
+    updateField(idx, 'lotes', (positions[idx].lotes || []).filter((_, i) => i !== li));
   }
 
   // Actualiza precio vivo SOLO de las posiciones (son pocas). Secuencial con un
@@ -191,6 +206,77 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     return { ok: true, symbols, weights, risk, excluded, n: months.length, mixedCur, anyBundle, cuts };
   }, [positions, getBars, priceOf, maxBars]);
 
+  // TIR money-weighted (XIRR) por posición vs CAGR del activo en la ventana.
+  function tirInfo(p) {
+    const lotes = (p.lotes || []).filter(l => l.fecha && Number(l.cantidad) > 0 && Number(l.precio) > 0);
+    if (lotes.length === 0) return { state: 'empty' };
+    const price = priceOf(p.ticker);
+    if (price == null) return { state: 'noprice' };
+    const sorted = [...lotes].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+    const date0 = sorted[0].fecha;
+    const today = new Date().toISOString().slice(0, 10);
+    const yrs = (d) => (new Date(d).getTime() - new Date(date0).getTime()) / (365 * 864e5);
+    const flows = sorted.map(l => ({ t: yrs(l.fecha), cf: -(Number(l.cantidad) * Number(l.precio)) }));
+    const totalQty = lotes.reduce((a, l) => a + Number(l.cantidad), 0);
+    flows.push({ t: yrs(today), cf: totalQty * price });
+    const tir = xirr(flows);
+    const raw = maxBars[p.ticker] || getBars(p.ticker) || [];
+    const disc = detectDiscontinuity(raw);
+    const cagr = cagrBetween(raw.slice(disc.startIndex || 0), date0);
+    return {
+      state: 'ok', tir, cagr,
+      brecha: (tir != null && cagr != null) ? (tir - cagr) : null,
+      date0, totalQty,
+      qtyMismatch: Math.abs(totalQty - Number(p.cantidad)) > 1e-9,
+      illustrative: !maxBars[p.ticker],
+    };
+  }
+
+  function renderTir(p, idx) {
+    const lotes = p.lotes || [];
+    const info = tirInfo(p);
+    return (
+      <div className="pf-tir">
+        <table className="pf-table" style={{ maxWidth: 460 }}>
+          <thead><tr><th>Fecha compra</th><th>Cantidad</th><th>Precio</th><th></th></tr></thead>
+          <tbody>
+            {lotes.length === 0 && <tr><td colSpan={4} style={{ color: '#6b6558' }}>Sin lotes.</td></tr>}
+            {lotes.map((l, li) => (
+              <tr key={li}>
+                <td><input className="pf-input" style={{ width: 130 }} type="date" value={l.fecha || ''} onChange={e => updateLote(idx, li, 'fecha', e.target.value)} /></td>
+                <td><input className="pf-input" style={{ width: 90 }} type="number" min="0" value={l.cantidad} onChange={e => updateLote(idx, li, 'cantidad', Number(e.target.value) || 0)} /></td>
+                <td><input className="pf-input" style={{ width: 100 }} type="number" min="0" step="0.01" value={l.precio} onChange={e => updateLote(idx, li, 'precio', Number(e.target.value) || 0)} /></td>
+                <td><button className="pf-del" onClick={() => removeLote(idx, li)}>✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button className="import-btn" onClick={() => addLote(idx)} style={{ marginTop: 6 }}>+ Lote</button>
+
+        {info.state === 'empty' && (
+          <p className="rd-note" style={{ marginTop: 8 }}>Agregá fecha, cantidad y precio de cada compra para ver tu TIR (el retorno real de tus entradas).</p>
+        )}
+        {info.state === 'noprice' && (
+          <p className="rd-note" style={{ marginTop: 8 }}>— Sin precio actual del papel; dale ↻ Precios vivos.</p>
+        )}
+        {info.state === 'ok' && (
+          <div style={{ marginTop: 8 }}>
+            {info.illustrative && <div className="pf-reco-illustrative">⚠ Ilustrativo — CAGR sobre bundle sintético; dale ↻ Precios vivos.</div>}
+            {info.qtyMismatch && <div className="pf-reco-illustrative">⚠ Los lotes no suman la cantidad de la posición (TIR igual se calcula con los lotes cargados).</div>}
+            <p className="pf-tir-line">
+              {info.tir == null
+                ? <>TIR: <strong>—</strong> (sin cambio de signo en los flujos / ventana degenerada)</>
+                : <>TIR (tu timing): <strong className={info.tir >= 0 ? 'up' : 'down'}>{fmtPct(info.tir)}</strong></>}
+              {' · '}CAGR del activo: <strong className={info.cagr == null ? '' : info.cagr >= 0 ? 'up' : 'down'}>{info.cagr == null ? '—' : fmtPct(info.cagr)}</strong>
+              {info.brecha != null && <> · brecha (TIR−CAGR): <strong>{info.brecha >= 0 ? '+' : ''}{(info.brecha * 100).toFixed(1)} pp</strong></>}
+            </p>
+            <p className="rd-note" style={{ marginTop: 2 }}>TIR &gt; CAGR ⇒ tu timing sumó; TIR &lt; CAGR ⇒ restó. Money-weighted, una sola moneda · educacional.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const heldSymbols = useMemo(() => new Set(positions.map(p => p.ticker)), [positions]);
   const horizonLabel = HORIZONS.find(h => h.days === horizonDays)?.label || `${horizonDays}d`;
   const heldRanked = ranking.filter(r => heldSymbols.has(r.symbol));
@@ -253,14 +339,19 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
                 const plPct = (price != null && cost != null && cost > 0) ? (price / cost - 1) : null;
                 const totalCur = totalsByCurrency[p.moneda]?.mv || 0;
                 const weight = (mv != null && totalCur > 0) ? mv / totalCur : null;
+                const tirOpen = expandedTir.has(idx);
                 return (
-                  <tr key={idx}>
+                  <React.Fragment key={idx}>
+                  <tr>
                     <td>
                       <strong>{p.ticker}</strong>
                       <span className="pf-badge">{p.mercado}</span>
                       <span className="pf-src" style={{ color: isLive(p.ticker) ? '#82c5a4' : '#e8b86a' }}>
                         {isLive(p.ticker) ? 'LIVE' : 'bundle'}
                       </span>
+                      <button className="pf-tir-toggle" onClick={() => toggleTir(idx)} title="TIR por fechas de compra (money-weighted)">
+                        {tirOpen ? '▾' : '▸'} Fechas de compra (TIR)
+                      </button>
                     </td>
                     <td>
                       <input className="pf-input" type="number" min="0" value={p.cantidad}
@@ -282,6 +373,12 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
                       <button className="pf-del" title="Eliminar (salida total)" onClick={() => removePosition(idx)}>✕</button>
                     </td>
                   </tr>
+                  {tirOpen && (
+                    <tr className="pf-tir-row">
+                      <td colSpan={8}>{renderTir(p, idx)}</td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
