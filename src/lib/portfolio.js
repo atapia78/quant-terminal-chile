@@ -178,6 +178,32 @@ export function portfolioRisk({ symbols, series, weights }) {
 }
 
 // ============================================================
+// CAPM — beta / alpha vs mercado (^IPSA). Ver docs/metodologia-mdf.md
+// β = cov(r_act, r_mkt)/var(r_mkt); α de Jensen = mean(r_act) − β·mean(r_mkt)
+// (anualizado ×12, supuesto rf≈0). Retornos mensuales log, n−1, meses comunes.
+// ============================================================
+export function capm(assetBars, marketBars, { minMonths = 2 } = {}) {
+  const { symbols, months, series } = alignMonthlyReturns(
+    [{ symbol: 'A', bars: assetBars }, { symbol: 'M', bars: marketBars }], minMonths
+  );
+  if (symbols.length < 2 || months.length < 2) return null;
+  const a = series['A'], m = series['M'], n = months.length;
+  const ma = a.reduce((x, y) => x + y, 0) / n, mm = m.reduce((x, y) => x + y, 0) / n;
+  let cov = 0, varM = 0, varA = 0;
+  for (let t = 0; t < n; t++) {
+    cov += (a[t] - ma) * (m[t] - mm);
+    varM += (m[t] - mm) ** 2;
+    varA += (a[t] - ma) ** 2;
+  }
+  cov /= (n - 1); varM /= (n - 1); varA /= (n - 1);
+  if (varM <= 0) return null;
+  const beta = cov / varM;
+  const alpha = (ma - beta * mm) * 12;
+  const corr = (varA > 0 && varM > 0) ? cov / Math.sqrt(varA * varM) : 0;
+  return { beta, alpha, corr, r2: corr * corr, n };
+}
+
+// ============================================================
 // TIR money-weighted (XIRR) — ver docs/metodologia-mdf.md
 // flows: [{ t (años, Actual/365), cf (con signo) }]
 // ============================================================

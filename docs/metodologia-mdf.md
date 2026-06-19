@@ -37,3 +37,9 @@ Convenciones que sigue Quant Terminal. Autocontenido: implementar desde acá, si
 - Un único retorno money-weighted de toda la cartera: se juntan los flujos de TODAS las posiciones (cada lote = −cantidad×precio en su fecha; hoy = +valor de mercado total) y se convierten a una moneda base (CLP) con el tipo de cambio USD/CLP de CADA fecha (`fxAt`), no con el TC de hoy. La TIR sale de `xirr` sobre esos flujos en CLP.
 - Referencia time-weighted: promedio de las CAGR por activo ponderado por valor de mercado en CLP — es aproximación, NO un NAV reconstruido.
 - Cautela: al convertir con TC histórico, el tipo de cambio aporta su PROPIO retorno y riesgo a la TIR en CLP (no es solo el de los activos). Si falta la serie FX, se reporta TIR por moneda por separado, sin consolidar.
+
+## CAPM — beta / alpha vs mercado (^IPSA)
+- β = cov(r_activo, r_mercado) / var(r_mercado), con retornos mensuales log alineados por meses comunes (n−1). Mide la sensibilidad al mercado (β>1 más volátil que el índice; β<1 menos).
+- α de Jensen = mean(r_activo) − β·mean(r_mercado), anualizado ×12. Supuesto explícito: rf ≈ 0. Es el retorno que el mercado NO explica.
+- ρ = correlación con el índice; R² = ρ². Beta de cartera: β_P = Σ wᵢ·βᵢ (peso = valor de mercado en CLP).
+- Cautela: para papeles USD, β contra un índice en CLP mezcla el efecto cambiario (se marca el flag). n<24 meses ⇒ beta poco robusta.

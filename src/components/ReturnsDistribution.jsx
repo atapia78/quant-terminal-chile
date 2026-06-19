@@ -3,6 +3,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 import { histogram, computeStats } from '../lib/stats.js';
+import { capm } from '../lib/portfolio.js';
 import { useYahooQuotes, yahooSymbolFor } from '../lib/useYahooQuotes.js';
 import {
   resampleMonthly, resampleAnnual, periodReturns, normalFit, normalPdf,
@@ -103,6 +104,14 @@ export default function ReturnsDistribution({ symbol, fallbackBars, currency = '
   const haveLive = !!(maxBars && maxBars.length);
   const sourceBars = haveLive ? maxBars : (fallbackBars || []);
 
+  // Mercado ^IPSA (historia máxima) para beta/alpha. Fetch propio cacheado.
+  const [ipsaBars, setIpsaBars] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchSymbol('^IPSA', 'max').then(d => { if (!cancelled && d && d.bars) setIpsaBars(d.bars); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [fetchSymbol]);
+
   // Guard de discontinuidad (quiebre estructural) + override manual "analizar desde".
   const disc = useMemo(() => detectDiscontinuity(sourceBars), [sourceBars]);
   const years = useMemo(() => {
@@ -121,6 +130,9 @@ export default function ReturnsDistribution({ symbol, fallbackBars, currency = '
   }, [disc, fromYear, sourceBars]);
 
   const eff = useMemo(() => sourceBars.slice(effStartIndex), [sourceBars, effStartIndex]);
+
+  // CAPM vs ^IPSA sobre la serie efectiva.
+  const capmInfo = useMemo(() => (eff.length && ipsaBars ? capm(eff, ipsaBars) : null), [eff, ipsaBars]);
 
   // CAGR + drag sobre la serie efectiva (historia continua).
   const cagrInfo = useMemo(() => {
@@ -176,6 +188,13 @@ export default function ReturnsDistribution({ symbol, fallbackBars, currency = '
         Período efectivo: <strong>{effFrom || '—'}</strong> → <strong>{effTo || '—'}</strong> ({eff.length} días)
         {cagrInfo && <> · CAGR (geom. anual) <strong style={{ color: cagrInfo.cagr >= 0 ? '#82c5a4' : '#d97757' }}>{pf(cagrInfo.cagr)}</strong>
           {cagrInfo.dragBps != null && <> · drag por volatilidad <strong>{cagrInfo.dragBps >= 0 ? '+' : ''}{cagrInfo.dragBps.toFixed(0)} pb</strong> (vs aritmético {pf(cagrInfo.annR)})</>}</>}
+      </p>
+      <p className="rd-note" style={{ marginTop: 0 }}>
+        {capmInfo
+          ? <>vs IPSA: β <strong style={{ color: '#e8b86a' }}>{capmInfo.beta.toFixed(2)}</strong> · α <strong className={capmInfo.alpha >= 0 ? 'up' : 'down'}>{pf(capmInfo.alpha)}/año</strong> · ρ <strong>{capmInfo.corr.toFixed(2)}</strong> · R² {capmInfo.r2.toFixed(2)} ({capmInfo.n} meses)
+              {capmInfo.n < 24 && <strong style={{ color: '#d97757' }}> · beta poco robusta</strong>}
+              {currency === 'USD' && <strong style={{ color: '#d97757' }}> · incluye efecto FX (activo USD vs índice CLP)</strong>}</>
+          : <>vs IPSA: — (sin meses comunes suficientes o sin data viva del índice; dale ↻ LIVE)</>}
       </p>
 
       {/* Ambos histogramas a la vez */}

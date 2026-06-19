@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, xirr, cagrBetween, portfolioXirr, HORIZONS } from '../lib/portfolio.js';
+import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, xirr, cagrBetween, portfolioXirr, capm, HORIZONS } from '../lib/portfolio.js';
 import { detectDiscontinuity } from '../lib/returns.js';
 import { useYahooQuotes, yahooSymbolFor } from '../lib/useYahooQuotes.js';
 
@@ -84,6 +84,17 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     return best.close;
   }, [fxBars]);
   const fxToday = fxBars && fxBars.length ? fxBars[fxBars.length - 1].close : null;
+
+  // Mercado ^IPSA (historia máxima) para beta de cartera.
+  const [ipsaBars, setIpsaBars] = useState(null);
+  const ipsaReqRef = useRef(false);
+  useEffect(() => {
+    if (ipsaReqRef.current) return;
+    ipsaReqRef.current = true;
+    let cancelled = false;
+    fetchMaxSymbol('^IPSA', 'max').then(d => { if (!cancelled && d && d.bars) setIpsaBars(d.bars); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [fetchMaxSymbol]);
 
   // ---------- CRUD posiciones ----------
   function updateField(idx, field, value) {
@@ -225,6 +236,33 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     const cuts = symbols.filter(s => meta[s]?.cut).map(s => `${s} desde ${meta[s].cut}`);
     return { ok: true, symbols, weights, risk, excluded, n: months.length, mixedCur, anyBundle, cuts };
   }, [positions, getBars, priceOf, maxBars]);
+
+  // Beta de la cartera vs ^IPSA: β_P = Σ wᵢ·βᵢ (peso = MV en CLP).
+  const carteraBeta = useMemo(() => {
+    if (!ipsaBars || !ipsaBars.length) return { state: 'nodata' };
+    const seen = new Set();
+    const uniq = positions.filter(p => (seen.has(p.ticker) ? false : seen.add(p.ticker)));
+    const rows = []; let total = 0; let anyUsd = false; let anyBundle = false; let minN = Infinity;
+    for (const p of uniq) {
+      const price = priceOf(p.ticker);
+      if (price == null) continue;
+      const raw = maxBars[p.ticker] || getBars(p.ticker) || [];
+      const disc = detectDiscontinuity(raw);
+      const c = capm(raw.slice(disc.startIndex || 0), ipsaBars);
+      if (!c) continue;
+      const fxNow = p.moneda === 'USD' ? (fxToday || 1) : 1;
+      const mvCLP = price * Number(p.cantidad) * fxNow;
+      if (!(mvCLP > 0)) continue;
+      rows.push({ beta: c.beta, mv: mvCLP });
+      total += mvCLP;
+      if (p.moneda === 'USD') anyUsd = true;
+      if (!maxBars[p.ticker]) anyBundle = true;
+      minN = Math.min(minN, c.n);
+    }
+    if (rows.length === 0 || total <= 0) return { state: 'empty' };
+    const betaP = rows.reduce((a, r) => a + (r.mv / total) * r.beta, 0);
+    return { state: 'ok', betaP, anyUsd, anyBundle, minN, k: rows.length };
+  }, [positions, priceOf, maxBars, getBars, ipsaBars, fxToday]);
 
   // TIR money-weighted (XIRR) por posición vs CAGR del activo en la ventana.
   function tirInfo(p) {
@@ -520,6 +558,16 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
           <span>Riesgo de cartera · <span className="accent">Markowitz</span></span>
           {cartera.ok && <span style={{ fontSize: 11, color: '#a89f8e', fontFamily: 'JetBrains Mono, monospace' }}>{cartera.n} meses comunes</span>}
         </div>
+
+        {carteraBeta.state === 'ok' && (
+          <p className="pf-tir-line" style={{ marginBottom: 12 }}>
+            Beta de la cartera vs IPSA: <strong style={{ color: '#e8b86a' }}>{carteraBeta.betaP.toFixed(2)}</strong>
+            {' '}— {carteraBeta.betaP > 1 ? 'más volátil que el mercado' : carteraBeta.betaP < 1 ? 'menos volátil que el mercado' : 'en línea con el mercado'}.
+            {carteraBeta.minN < 24 && <span style={{ color: '#d97757' }}> Beta poco robusta ({carteraBeta.minN} meses).</span>}
+            {carteraBeta.anyUsd && <span style={{ color: '#d97757' }}> Incluye efecto FX (papeles USD vs índice CLP).</span>}
+            {carteraBeta.anyBundle && <span style={{ color: '#e8b86a' }}> Ilustrativo (algún papel en bundle).</span>}
+          </p>
+        )}
 
         {!cartera.ok ? (
           <p className="rd-note">Necesitás al menos 2 papeles con historia mensual común. Agregá posiciones y dale ↻ Precios vivos.</p>
