@@ -17,7 +17,7 @@ import QuantSummary from './components/QuantSummary.jsx';
 import CSVImportModal from './components/CSVImportModal.jsx';
 
 export default function App() {
-  const [tickerKey, setTickerKey] = useState('COPEC');
+  const [tickerKey, setTickerKey] = useState('LTM');
   const [customStock, setCustomStock] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [liveData, setLiveData] = useState({});
