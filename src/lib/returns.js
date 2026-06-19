@@ -115,3 +115,24 @@ export function monthlySeasonality(bars) {
 }
 
 export const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+// Detecta quiebres estructurales: un retorno DIARIO con |ln(P_t/P_{t-1})| sobre
+// el umbral (default 50%) marca una discontinuidad (ej. reestructuración / dilución
+// masiva tipo Chapter 11). Devuelve el índice del último quiebre con suficiente
+// historia posterior, para acotar el análisis al tramo continuo más reciente.
+export function detectDiscontinuity(bars, { dailyThreshold = 0.5, minTail = 60 } = {}) {
+  if (!bars || bars.length < 2) return { startIndex: 0, cutDate: null, reason: null };
+  let lastBreak = -1;
+  for (let i = 1; i < bars.length; i++) {
+    const a = bars[i - 1].close, b = bars[i].close;
+    if (a > 0 && b > 0 && Math.abs(Math.log(b / a)) > dailyThreshold) lastBreak = i;
+  }
+  if (lastBreak > 0 && bars.length - lastBreak >= minTail) {
+    return {
+      startIndex: lastBreak,
+      cutDate: bars[lastBreak].date,
+      reason: `salto > ${Math.round(dailyThreshold * 100)}% en un día (posible quiebre estructural / reestructuración) — histórico previo no comparable`,
+    };
+  }
+  return { startIndex: 0, cutDate: null, reason: null };
+}

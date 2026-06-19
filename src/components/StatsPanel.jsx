@@ -9,11 +9,8 @@ function Row({ k, v, color = '' }) {
   );
 }
 
-export default function StatsPanel({ stats, yearChg, cagr }) {
+export default function StatsPanel({ stats, yearChg }) {
   if (!stats) return null;
-  // Brecha aritmético − geométrico = "drag por volatilidad" (en puntos base).
-  const cagrVal = cagr && isFinite(cagr.cagr) ? cagr.cagr : null;
-  const dragBps = cagrVal != null ? (stats.annReturn - cagrVal) * 10000 : null;
   return (
     <div className="panel">
       <div className="panel-title">
@@ -23,8 +20,6 @@ export default function StatsPanel({ stats, yearChg, cagr }) {
       <div className="stats-table">
         <Row k="Retorno (1Y)" v={`${(yearChg * 100).toFixed(2)}%`} color={yearChg >= 0 ? 'up' : 'down'} />
         <Row k="Retorno anual. (aritm.)" v={`${(stats.annReturn * 100).toFixed(2)}%`} color={stats.annReturn >= 0 ? 'up' : 'down'} />
-        <Row k="CAGR (geom. anual)" v={cagrVal != null ? `${(cagrVal * 100).toFixed(2)}%` : '—'} color={cagrVal != null && cagrVal >= 0 ? 'up' : cagrVal != null ? 'down' : ''} />
-        <Row k="Drag por volatilidad" v={dragBps != null ? `${dragBps >= 0 ? '+' : ''}${dragBps.toFixed(0)} pb` : '—'} />
         <Row k="Volatilidad anual." v={`${(stats.annVol * 100).toFixed(2)}%`} />
         <Row k="Sharpe (rf=4%)" v={stats.sharpe.toFixed(2)} color={stats.sharpe >= 1 ? 'up' : stats.sharpe < 0 ? 'down' : ''} />
         <Row k="Sortino" v={isFinite(stats.sortino) ? stats.sortino.toFixed(2) : '—'} />

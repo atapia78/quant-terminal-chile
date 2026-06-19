@@ -13,7 +13,6 @@ function loadLiveData() {
 import { UNIVERSE, UNIVERSE_BY_SYMBOL, MARKETS } from './data/universe.js';
 import { sma, ema, rsi, macd, bollinger, atr } from './lib/indicators.js';
 import { computeStats, histogram } from './lib/stats.js';
-import { computeCAGR } from './lib/returns.js';
 import { useYahooQuotes, yahooSymbolFor } from './lib/useYahooQuotes.js';
 
 import PriceChart from './components/PriceChart.jsx';
@@ -127,8 +126,6 @@ export default function App() {
     if (!stats) return [];
     return histogram(stats.returns, 22);
   }, [stats]);
-
-  const cagr = useMemo(() => computeCAGR(enriched), [enriched]);
 
   if (!stock || enriched.length === 0) {
     return <div className="terminal">Cargando...</div>;
@@ -307,7 +304,7 @@ export default function App() {
       {view === 'analisis' && (<ErrorBoundary>
       <div className="grid-main">
         <PriceChart enriched={enriched} currency={currency} />
-        <StatsPanel stats={stats} yearChg={yearChg} cagr={cagr} />
+        <StatsPanel stats={stats} yearChg={yearChg} />
       </div>
 
       <IndicatorsRow enriched={enriched} hist={hist} latest={latest} statsN={stats?.n ?? 0} />
@@ -316,7 +313,7 @@ export default function App() {
         <ProjectionsPanel bars={enriched} currency={currency} />
       </div>
 
-      <ReturnsDistribution bars={enriched} dataSource={dataSource} />
+      <ReturnsDistribution symbol={isCustom ? null : tickerKey} fallbackBars={enriched} currency={currency} />
 
       <div className="grid-bottom">
         <PositionSizing latest={latest} currency={currency} />

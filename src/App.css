@@ -673,3 +673,11 @@
 @media (max-width: 960px) {
   .qt-sticky { margin: -20px -20px 12px; padding: 20px 20px 12px; }
 }
+
+/* ============ Dos histogramas (mensual + anual) ============ */
+.rd-dist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.rd-dist { background: #0d0c0a; border: 1px solid #1f1c17; padding: 12px; border-radius: 4px; }
+.rd-dist-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px; }
+.rd-dist-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #e8b86a; letter-spacing: 0.05em; }
+.rd-shortflag { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #d97757; border: 1px solid #4a2f28; border-radius: 3px; padding: 1px 6px; }
+@media (max-width: 960px) { .rd-dist-grid { grid-template-columns: 1fr; } }
