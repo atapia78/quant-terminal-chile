@@ -659,3 +659,17 @@
   background: rgba(217,119,87,0.08); border: 1px solid #3d2a26; color: #d97757;
   font-family: 'JetBrains Mono', monospace;
 }
+
+/* ============ Cabecera + tarjetas fijas al hacer scroll ============ */
+.qt-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #0d0c0a;
+  margin: -28px -32px 14px;       /* anula el padding superior y abarca el ancho */
+  padding: 28px 32px 14px;
+  border-bottom: 1px solid #2a2520;
+}
+@media (max-width: 960px) {
+  .qt-sticky { margin: -20px -20px 12px; padding: 20px 20px 12px; }
+}

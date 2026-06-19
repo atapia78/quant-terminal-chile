@@ -24,6 +24,8 @@ import ReturnsDistribution from './components/ReturnsDistribution.jsx';
 import PositionSizing from './components/PositionSizing.jsx';
 import QuantSummary from './components/QuantSummary.jsx';
 import CSVImportModal from './components/CSVImportModal.jsx';
+import PortfolioView from './components/PortfolioView.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 
 export default function App() {
   const [view, setView] = useState('analisis');
@@ -149,6 +151,7 @@ export default function App() {
 
   return (
     <div className="terminal">
+      <div className="qt-sticky">
       <div className="header">
         <div className="brand-wrap">
           <span className="brand-mark"><em>Quant</em>Terminal</span>
@@ -233,17 +236,7 @@ export default function App() {
         <button className={`view-tab ${view === 'portafolio' ? 'active' : ''}`} onClick={() => setView('portafolio')}>Mi Portafolio</button>
       </div>
 
-      {view === 'portafolio' && (
-        <PortfolioView
-          universe={UNIVERSE}
-          bySymbol={UNIVERSE_BY_SYMBOL}
-          liveData={liveData}
-          onRefreshTicker={refreshTicker}
-          loading={loading}
-        />
-      )}
-
-      {view === 'analisis' && (<>
+      {view === 'analisis' && (
       <div className="top-stats">
         <div className="stat-cell">
           <span className="stat-label">Instrumento</span>
@@ -284,7 +277,22 @@ export default function App() {
           </span>
         </div>
       </div>
+      )}
+      </div>{/* /qt-sticky */}
 
+      {view === 'portafolio' && (
+        <ErrorBoundary>
+          <PortfolioView
+            universe={UNIVERSE}
+            bySymbol={UNIVERSE_BY_SYMBOL}
+            liveData={liveData}
+            onRefreshTicker={refreshTicker}
+            loading={loading}
+          />
+        </ErrorBoundary>
+      )}
+
+      {view === 'analisis' && (<ErrorBoundary>
       <div className="grid-main">
         <PriceChart enriched={enriched} currency={currency} />
         <StatsPanel stats={stats} yearChg={yearChg} cagr={cagr} />
@@ -302,7 +310,7 @@ export default function App() {
         <PositionSizing latest={latest} currency={currency} />
         <QuantSummary stats={stats} latest={latest} tickerSymbol={stock.symbol} />
       </div>
-      </>)}
+      </ErrorBoundary>)}
 
       <div className="footer-note">
         <span>
