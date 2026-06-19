@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 
 // Persistencia del último fetch real por ticker (quick win #1):
@@ -86,6 +86,18 @@ export default function App() {
     }
     if (errors.length > 0) setFetchError(errors.join(' · '));
   }, [fetchSymbol, range]);
+
+  // Auto-fetch del ticker activo al abrir y al cambiar de ticker: baja la data
+  // viva de ESE símbolo una sola vez (no el universo, para respetar el 429).
+  // El bundle queda solo de fallback mientras carga o si el fetch falla.
+  const autoFetched = useRef(new Set());
+  useEffect(() => {
+    if (isCustom || !tickerKey) return;
+    if (liveData[tickerKey]) return;                 // ya cargado (incluye persistido)
+    if (autoFetched.current.has(tickerKey)) return;  // ya intentado esta sesión (no reintenta en bucle)
+    autoFetched.current.add(tickerKey);
+    refreshTicker(tickerKey);
+  }, [tickerKey, isCustom, liveData, refreshTicker]);
 
   const enriched = useMemo(() => {
     if (!stock) return [];
