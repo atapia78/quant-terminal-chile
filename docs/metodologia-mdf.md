@@ -32,3 +32,8 @@ Convenciones que sigue Quant Terminal. Autocontenido: implementar desde acá, si
 - Mostrar distribución/incertidumbre, no certezas puntuales. Comparar contra naive (μ=0) para separar señal de ruido.
 - Data viva (↻ LIVE) > bundle sintético; marcar "ilustrativo" si es bundle.
 - Flags de robustez: "histórico corto" (<5 años para anual/estacionalidad); "serie acotada por discontinuidad" ante quiebres estructurales (ej. LTM: reestructuración Chapter 11, salida 3-nov-2022, dilución masiva — histórico previo no comparable).
+
+## TIR de cartera con FX (money-weighted, base CLP)
+- Un único retorno money-weighted de toda la cartera: se juntan los flujos de TODAS las posiciones (cada lote = −cantidad×precio en su fecha; hoy = +valor de mercado total) y se convierten a una moneda base (CLP) con el tipo de cambio USD/CLP de CADA fecha (`fxAt`), no con el TC de hoy. La TIR sale de `xirr` sobre esos flujos en CLP.
+- Referencia time-weighted: promedio de las CAGR por activo ponderado por valor de mercado en CLP — es aproximación, NO un NAV reconstruido.
+- Cautela: al convertir con TC histórico, el tipo de cambio aporta su PROPIO retorno y riesgo a la TIR en CLP (no es solo el de los activos). Si falta la serie FX, se reporta TIR por moneda por separado, sin consolidar.

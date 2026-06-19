@@ -211,6 +211,37 @@ export function xirr(flows) {
   return (a + b) / 2;
 }
 
+// TIR money-weighted de la CARTERA completa, base CLP. Junta los flujos de
+// TODAS las posiciones con lotes y los convierte a CLP con el TC de cada fecha.
+// entries: [{ moneda, lotes:[{fecha,cantidad,precio}], qtyTotal, price }]
+// fxAt(fecha)->USDCLP; fxToday->USDCLP actual. Reusa xirr().
+export function portfolioXirr({ entries, fxAt, fxToday }) {
+  const lotesAll = [];
+  for (const e of entries) {
+    for (const l of (e.lotes || [])) {
+      if (l.fecha && Number(l.cantidad) > 0 && Number(l.precio) > 0) lotesAll.push({ ...l, moneda: e.moneda });
+    }
+  }
+  if (lotesAll.length === 0) return { state: 'empty' };
+  const date0 = lotesAll.reduce((m, l) => (l.fecha < m ? l.fecha : m), lotesAll[0].fecha);
+  const today = new Date().toISOString().slice(0, 10);
+  const yrs = (d) => (new Date(d).getTime() - new Date(date0).getTime()) / (365 * 864e5);
+  const toCLP = (amount, moneda, fecha) => moneda === 'USD' ? amount * fxAt(fecha) : amount;
+
+  const flows = lotesAll.map(l => ({
+    t: yrs(l.fecha),
+    cf: toCLP(-(Number(l.cantidad) * Number(l.precio)), l.moneda, l.fecha),
+  }));
+  let mvCLP = 0;
+  for (const e of entries) {
+    if (e.price == null) continue;
+    const mv = e.qtyTotal * e.price;
+    mvCLP += e.moneda === 'USD' ? mv * fxToday : mv;
+  }
+  flows.push({ t: yrs(today), cf: mvCLP });
+  return { state: 'ok', tir: xirr(flows), date0, mvCLP };
+}
+
 // CAGR time-weighted del activo entre date0 y el último cierre de la serie.
 // Toma el close más cercano a date0. (Pasar bars ya acotada por discontinuidad.)
 export function cagrBetween(bars, date0) {

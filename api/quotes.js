@@ -20,8 +20,8 @@ export default async function handler(req, res) {
   const range = req.query.range || '2y';
   const interval = req.query.interval || '1d';
 
-  // Validación básica para evitar SSRF / injection
-  if (!symbol || !/^[A-Z0-9\-\.\^]{1,16}$/i.test(symbol)) {
+  // Validación básica para evitar SSRF / injection ('=' permite pares FX como USDCLP=X)
+  if (!symbol || !/^[A-Z0-9\-\.\^=]{1,16}$/i.test(symbol)) {
     return res.status(400).json({ error: 'Símbolo inválido' });
   }
   if (!/^(1mo|3mo|6mo|1y|2y|5y|10y|max)$/.test(range)) {

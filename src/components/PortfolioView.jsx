@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, xirr, cagrBetween, HORIZONS } from '../lib/portfolio.js';
+import { loadPortfolio, savePortfolio, projectTicker, rotationVerdict, alignMonthlyReturns, portfolioRisk, xirr, cagrBetween, portfolioXirr, HORIZONS } from '../lib/portfolio.js';
 import { detectDiscontinuity } from '../lib/returns.js';
 import { useYahooQuotes, yahooSymbolFor } from '../lib/useYahooQuotes.js';
 
@@ -64,6 +64,26 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     })();
     return () => { cancelled = true; };
   }, [positions, fetchMaxSymbol]);
+
+  // FX USD/CLP (solo si hay posiciones en USD), para la TIR de cartera en CLP.
+  const hasUsd = positions.some(p => p.moneda === 'USD');
+  const [fxBars, setFxBars] = useState(null);
+  const fxReqRef = useRef(false);
+  useEffect(() => {
+    if (!hasUsd || fxReqRef.current) return;
+    fxReqRef.current = true;
+    let cancelled = false;
+    fetchMaxSymbol('USDCLP=X', 'max').then(d => { if (!cancelled && d && d.bars) setFxBars(d.bars); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [hasUsd, fetchMaxSymbol]);
+  const fxAt = useCallback((fecha) => {
+    if (!fxBars || !fxBars.length) return null;
+    const t = new Date(fecha).getTime();
+    let best = fxBars[0], diff = Infinity;
+    for (const b of fxBars) { const dd = Math.abs(new Date(b.date).getTime() - t); if (dd < diff) { diff = dd; best = b; } }
+    return best.close;
+  }, [fxBars]);
+  const fxToday = fxBars && fxBars.length ? fxBars[fxBars.length - 1].close : null;
 
   // ---------- CRUD posiciones ----------
   function updateField(idx, field, value) {
@@ -277,6 +297,51 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
     );
   }
 
+  // ---------- TIR de la cartera completa (money-weighted, base CLP) ----------
+  const carteraTir = useMemo(() => {
+    const entries = positions.map(p => {
+      const lotes = (p.lotes || []).filter(l => l.fecha && Number(l.cantidad) > 0 && Number(l.precio) > 0);
+      return {
+        ticker: p.ticker, moneda: p.moneda, lotes,
+        qtyTotal: lotes.reduce((a, l) => a + Number(l.cantidad), 0),
+        price: priceOf(p.ticker),
+      };
+    }).filter(e => e.lotes.length > 0);
+    if (entries.length === 0) return { state: 'empty' };
+
+    const usd = entries.some(e => e.moneda === 'USD');
+    const illustrative = entries.some(e => !maxBars[e.ticker]);
+    const idFx = () => 1;
+
+    // Referencia time-weighted: promedio de cagrBetween ponderado por MV (CLP).
+    let wSum = 0, wRef = 0;
+    for (const e of entries) {
+      if (e.price == null) continue;
+      const date0 = e.lotes.reduce((m, l) => (l.fecha < m ? l.fecha : m), e.lotes[0].fecha);
+      const raw = maxBars[e.ticker] || getBars(e.ticker) || [];
+      const disc = detectDiscontinuity(raw);
+      const cg = cagrBetween(raw.slice(disc.startIndex || 0), date0);
+      const fxNow = usd && e.moneda === 'USD' ? (fxToday || 1) : 1;
+      const mvCLP = e.qtyTotal * e.price * fxNow;
+      if (cg != null && mvCLP > 0) { wSum += mvCLP; wRef += mvCLP * cg; }
+    }
+    const ref = wSum > 0 ? wRef / wSum : null;
+
+    // Si hay USD y no tenemos FX: TIR por moneda (sin conversión).
+    if (usd && (!fxBars || !fxBars.length)) {
+      const perCur = ['CLP', 'USD'].map(cur => {
+        const es = entries.filter(e => e.moneda === cur);
+        if (!es.length) return null;
+        const r = portfolioXirr({ entries: es, fxAt: idFx, fxToday: 1 });
+        return { cur, tir: r.state === 'ok' ? r.tir : null };
+      }).filter(Boolean);
+      return { state: 'nofx', perCur, ref, illustrative };
+    }
+
+    const r = portfolioXirr({ entries, fxAt: usd ? fxAt : idFx, fxToday: usd ? fxToday : 1 });
+    return { state: 'ok', tir: r.tir, ref, usd, illustrative };
+  }, [positions, priceOf, maxBars, getBars, fxBars, fxAt, fxToday]);
+
   const heldSymbols = useMemo(() => new Set(positions.map(p => p.ticker)), [positions]);
   const horizonLabel = HORIZONS.find(h => h.days === horizonDays)?.label || `${horizonDays}d`;
   const heldRanked = ranking.filter(r => heldSymbols.has(r.symbol));
@@ -403,6 +468,34 @@ export default function PortfolioView({ universe, bySymbol, liveData, onRefreshT
               </div>
             );
           })}
+        </div>
+
+        {/* TIR de la cartera completa (money-weighted, base CLP) */}
+        <div className="pf-cartera-tir">
+          {carteraTir.state === 'empty' && (
+            <p className="rd-note">Agregá fechas de compra (TIR) en tus posiciones para ver la TIR de la cartera.</p>
+          )}
+          {carteraTir.state === 'nofx' && (
+            <>
+              <div className="pf-reco-illustrative">⚠ Sin serie USD/CLP: TIR por moneda (no consolidada).</div>
+              <p className="pf-tir-line">
+                {carteraTir.perCur.map(c => `${c.cur}: ${c.tir == null ? '—' : fmtPct(c.tir)}`).join('  ·  ')}
+                {carteraTir.ref != null && <> · ref. (aprox.): {fmtPct(carteraTir.ref)}</>}
+              </p>
+            </>
+          )}
+          {carteraTir.state === 'ok' && (
+            <>
+              {carteraTir.illustrative && <div className="pf-reco-illustrative">⚠ Ilustrativo — algún papel corre sobre bundle sintético.</div>}
+              <p className="pf-tir-line">
+                TIR de la cartera (tu timing, en CLP): <strong className={carteraTir.tir == null ? '' : carteraTir.tir >= 0 ? 'up' : 'down'}>{carteraTir.tir == null ? '— (sin cambio de signo)' : fmtPct(carteraTir.tir)}</strong>
+                {carteraTir.ref != null && <> · referencia time-weighted (aprox.): <strong>{fmtPct(carteraTir.ref)}</strong></>}
+              </p>
+              <p className="rd-note" style={{ marginTop: 2 }}>
+                {carteraTir.usd ? 'Convertido a CLP con USD/CLP histórico (TC de cada fecha). ' : ''}La referencia no es un NAV reconstruido. Educacional.
+              </p>
+            </>
+          )}
         </div>
 
         {/* Alta de posición */}
