@@ -113,6 +113,9 @@ export function closedFormCone({ S0, mu, sigma, days, percentiles = [5, 25, 50, 
   const result = [];
   for (let t = 0; t <= days; t++) {
     const T = t / TD;
+    // OJO: `mu` es el drift ARITMÉTICO (media de retornos simples·252). Acá ya se
+    // descuenta σ²/2, así que el p50 (z=0) = S0·exp((μ−σ²/2)·T) es la MEDIANA de GBM
+    // (no la media). NO pasar mu_log acá: restaría σ²/2 dos veces. Ver README · Deuda técnica.
     const drift = (mu - 0.5 * sigma * sigma) * T;
     const vol = sigma * Math.sqrt(T);
     const row = { t };

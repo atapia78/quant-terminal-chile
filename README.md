@@ -237,7 +237,7 @@ position_size = (account × risk_pct) / (ATR × atr_multiplier)
 
 ## Deuda técnica
 
-- **El cono de proyección usa μ aritmético** (`mean·252`), no el CAGR geométrico. Sobre-estima el drift en presencia de volatilidad (drag geométrico). Pendiente: evaluar usar el geométrico o exponer ambos en el cono. Hoy el panel de Estadísticas ya muestra CAGR y la brecha ("drag por volatilidad") al lado del aritmético.
+- **Cono de proyección — drift geométrico: RESUELTO / no era un bug.** El cono se calibra con `mu = media(retornos simples)·252` (aritmético), pero `closedFormCone` ya aplica `drift = (mu − σ²/2)·T`, así que la línea central **p50 ya es la MEDIANA honesta de GBM** `S0·exp((μ − σ²/2)·T)`, no la media `S0·exp(μ·T)`. Verificado numéricamente (ej. SQM-B 126d: p50 = 9,65% = mediana honesta; el valor sin descontar sería 15,14%). Calibrar el drift con retornos log y pasarlo a `closedFormCone` **restaría σ²/2 dos veces** (mediana demasiado baja): NO hacerlo. El drag por volatilidad ya se ve en el panel de Estadísticas (CAGR vs aritmético).
 
 ## Limitaciones honestas
 
