@@ -26,7 +26,7 @@ import PortfolioView from './components/PortfolioView.jsx';
 
 export default function App() {
   const [view, setView] = useState('analisis');
-  const [tickerKey, setTickerKey] = useState('COPEC');
+  const [tickerKey, setTickerKey] = useState('LTM');
   const [customStock, setCustomStock] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [liveData, setLiveData] = useState(loadLiveData);
